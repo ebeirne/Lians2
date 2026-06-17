@@ -3,6 +3,7 @@ Core memory service: add, recall, recall(as_of), used by API routes.
 """
 from __future__ import annotations
 import hashlib
+import math
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
@@ -10,13 +11,44 @@ from uuid import UUID
 from sqlalchemy import select, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import Memory, EventLog
+from .models import Memory, EventLog, SubjectKey
 from .schemas import MemoryAdd, MemoryOut, RecallRequest, RecallResult
 from .embeddings import get_embedding_provider
-from .crypto import encrypt_content, decrypt_content
+from .crypto import encrypt_content, decrypt_content, unwrap_subject_key
 from .pii import get_or_create_subject_key
 from .supersession import run_supersession
 from .ranking import hybrid_recall
+
+_IMPORTANCE_RECENCY_HALF_LIFE_DAYS = 90.0
+
+
+def _compute_importance(event_time: datetime, caller_salience: float) -> float:
+    """Blend caller-provided salience with event-time recency."""
+    now = datetime.now(timezone.utc)
+    if event_time.tzinfo is None:
+        event_time = event_time.replace(tzinfo=timezone.utc)
+    age_days = (now - event_time).total_seconds() / 86400
+    recency = math.exp(-math.log(2) * age_days / _IMPORTANCE_RECENCY_HALF_LIFE_DAYS)
+    return round(0.4 * recency + 0.6 * caller_salience, 4)
+
+
+async def _load_namespace_subject_keys(db: AsyncSession, namespace: str) -> dict[str, bytes]:
+    """Load all active subject keys for a namespace (for decrypting recalled memories)."""
+    stmt = select(SubjectKey).where(
+        and_(
+            SubjectKey.namespace == namespace,
+            SubjectKey.destroyed_at.is_(None),
+        )
+    )
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    keys: dict[str, bytes] = {}
+    for row in rows:
+        try:
+            keys[row.subject_id] = unwrap_subject_key(bytes(row.enc_key))
+        except Exception:
+            pass
+    return keys
 
 
 def _content_hash(text: str) -> str:
@@ -87,7 +119,7 @@ async def add_memory(
         ingestion_time=now,
         valid_from=req.event_time,
         valid_to=None,
-        importance=req.importance,
+        importance=_compute_importance(req.event_time, req.importance),
         source=req.source,
         content_hash=_content_hash(req.content),
     )
@@ -142,6 +174,7 @@ async def recall_memories(
 ) -> RecallResult:
     provider = get_embedding_provider()
     query_embedding = await provider.embed_one(req.query)
+    subject_keys = await _load_namespace_subject_keys(db, namespace)
 
     results = await hybrid_recall(
         db=db,
@@ -152,6 +185,7 @@ async def recall_memories(
         k=req.k,
         as_of=req.as_of,
         filters=req.filters,
+        subject_keys=subject_keys,
     )
 
     # Audit log the recall
@@ -167,7 +201,7 @@ async def recall_memories(
             "as_of": req.as_of.isoformat() if req.as_of else None,
             "filters": req.filters,
             "result_ids": [str(m.id) for m, _, _ in results],
-            "scores": [round(s, 4) for _, s, _ in results],
+            "scores": [round(float(s), 4) for _, s, _ in results],
         },
     ))
     await db.commit()

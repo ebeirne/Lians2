@@ -53,17 +53,30 @@ class OpenAIProvider(EmbeddingProvider):
 
 
 class LocalProvider(EmbeddingProvider):
-    """Deterministic bag-of-words for tests — zero API calls."""
+    """Deterministic word-projection for tests — zero API calls.
+
+    Each token maps deterministically to a random unit vector; the text
+    embedding is the L2-normalized sum of its token vectors.  Two texts
+    sharing tokens will have meaningfully similar cosines, which is the
+    minimal property needed for semantic recall tests to behave correctly.
+    """
     dim = 1024
+
+    @staticmethod
+    def _token_vec(token: str, dim: int) -> np.ndarray:
+        seed = int(hashlib.md5(token.encode()).hexdigest(), 16) % (2**31)
+        rng = np.random.default_rng(seed)
+        v = rng.standard_normal(dim).astype(np.float32)
+        return v / (np.linalg.norm(v) + 1e-9)
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
         results = []
         for text in texts:
-            seed = int(hashlib.md5(text.encode()).hexdigest(), 16) % (2**31)
-            rng = np.random.default_rng(seed)
-            vec = rng.standard_normal(self.dim).astype(np.float32)
-            vec = vec / (np.linalg.norm(vec) + 1e-9)
-            results.append(vec.tolist())
+            vec = np.zeros(self.dim, dtype=np.float32)
+            for token in text.lower().split():
+                vec += self._token_vec(token, self.dim)
+            norm = np.linalg.norm(vec)
+            results.append((vec / (norm + 1e-9)).tolist())
         return results
 
 
