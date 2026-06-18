@@ -2,13 +2,14 @@
 Core memory service: add, recall, recall(as_of), used by API routes.
 """
 from __future__ import annotations
+import asyncio
 import hashlib
 import math
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
 
-from sqlalchemy import select, and_, update
+from sqlalchemy import select, and_, update, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import Memory, EventLog, SubjectKey
@@ -20,6 +21,49 @@ from .supersession import run_supersession
 from .ranking import hybrid_recall
 
 _IMPORTANCE_RECENCY_HALF_LIFE_DAYS = 90.0
+
+
+def _write_lock_keys(namespace: str, agent_id: str) -> tuple[int, int]:
+    """Two stable int4 values for pg_advisory_xact_lock(int, int)."""
+    h = hashlib.sha256(f"{namespace}\x00{agent_id}".encode()).digest()
+    return int.from_bytes(h[:4], "big"), int.from_bytes(h[4:8], "big")
+
+
+# ── In-process lock registry ────────────────────────────────────────────────
+# One asyncio.Lock per (event_loop, namespace, agent_id).
+# Keyed by loop identity so test-generated loops each get fresh locks.
+# No mutex needed: asyncio is cooperative — no interleaving between the
+# `if key not in` check and the `_write_locks[key] = ...` assignment.
+_write_locks: dict[tuple[int, str, str], asyncio.Lock] = {}
+
+
+async def _get_in_process_lock(namespace: str, agent_id: str) -> asyncio.Lock:
+    """Return (creating if needed) the asyncio.Lock for this (namespace, agent_id)."""
+    loop = asyncio.get_running_loop()
+    key = (id(loop), namespace, agent_id)
+    if key not in _write_locks:
+        _write_locks[key] = asyncio.Lock()
+    return _write_locks[key]
+
+
+async def _acquire_pg_advisory_lock(db: AsyncSession, namespace: str, agent_id: str) -> None:
+    """
+    Layer 2: PostgreSQL transaction-level advisory lock — cross-process guard.
+
+    Released automatically on commit or rollback.  A second writer (in a different
+    worker process) with the same namespace+agent_id blocks here until the first
+    writer's transaction commits, then re-reads candidates with updated valid_to.
+
+    No-op on SQLite (unit tests) — Layer 1 (asyncio.Lock) covers in-process races.
+    """
+    try:
+        engine = db.sync_session.get_bind()
+        if engine.dialect.name != "postgresql":
+            return
+    except Exception:
+        return
+    k1, k2 = _write_lock_keys(namespace, agent_id)
+    await db.execute(text("SELECT pg_advisory_xact_lock(:k1, :k2)"), {"k1": k1, "k2": k2})
 
 
 def _compute_importance(event_time: datetime, caller_salience: float) -> float:
@@ -89,82 +133,90 @@ async def add_memory(
     if req.subject_id:
         subject_key = await get_or_create_subject_key(db, req.subject_id, namespace)
 
-    # Run supersession funnel before inserting
-    supersession = await run_supersession(
-        db=db,
-        namespace=namespace,
-        agent_id=req.agent_id,
-        new_content=req.content,
-        new_meta=req.metadata,
-        new_embedding=embedding,
-        new_event_time=req.event_time,
-        subject_key=subject_key,
+    # Encrypt content outside the lock (pure CPU, no DB I/O)
+    stored_bytes = (
+        encrypt_content(req.content, subject_key) if subject_key else req.content.encode()
     )
 
-    # Encrypt content (or store raw bytes for non-PII)
-    if subject_key:
-        stored_bytes = encrypt_content(req.content, subject_key)
-    else:
-        stored_bytes = req.content.encode()
+    # ── Critical section ────────────────────────────────────────────────────
+    # Two-layer write serialisation for (namespace, agent_id):
+    #   Layer 1 — asyncio.Lock: in-process (single worker or test)
+    #   Layer 2 — pg_advisory_xact_lock: cross-process (multi-worker)
+    # Both are acquired before reading supersession candidates; Layer 2 is
+    # released automatically on db.commit() / rollback.
+    in_process_lock = await _get_in_process_lock(namespace, req.agent_id)
+    async with in_process_lock:
+        await _acquire_pg_advisory_lock(db, namespace, req.agent_id)
 
-    now = datetime.now(timezone.utc)
-    mem = Memory(
-        namespace=namespace,
-        agent_id=req.agent_id,
-        content_encrypted=stored_bytes,
-        subject_id=req.subject_id,
-        embedding=embedding,
-        metadata_=req.metadata,
-        event_time=req.event_time,
-        ingestion_time=now,
-        valid_from=req.event_time,
-        valid_to=None,
-        importance=_compute_importance(req.event_time, req.importance),
-        source=req.source,
-        content_hash=_content_hash(req.content),
-    )
-    db.add(mem)
-    await db.flush()  # get mem.id
+        supersession = await run_supersession(
+            db=db,
+            namespace=namespace,
+            agent_id=req.agent_id,
+            new_content=req.content,
+            new_meta=req.metadata,
+            new_embedding=embedding,
+            new_event_time=req.event_time,
+            subject_key=subject_key,
+        )
 
-    # Apply supersessions
-    for old_id in supersession.superseded_ids:
-        old = await db.get(Memory, old_id)
-        if old:
-            old.valid_to = req.event_time
-            old.superseded_by = mem.id
-            old.supersession_confidence = supersession.confidence
-            db.add(EventLog(
-                namespace=namespace,
-                agent_id=req.agent_id,
-                op="supersede",
-                memory_id=old.id,
-                content_hash=old.content_hash,
-                payload={
-                    "superseded_by": str(mem.id),
-                    "confidence": supersession.confidence,
-                    "relation": supersession.relation,
-                    "rationale": supersession.rationale,
-                    "adjudication_stage": 3 if supersession.rationale else 2,
-                },
-            ))
+        now = datetime.now(timezone.utc)
+        mem = Memory(
+            namespace=namespace,
+            agent_id=req.agent_id,
+            content_encrypted=stored_bytes,
+            subject_id=req.subject_id,
+            embedding=embedding,
+            metadata_=req.metadata,
+            event_time=req.event_time,
+            ingestion_time=now,
+            valid_from=req.event_time,
+            valid_to=None,
+            importance=_compute_importance(req.event_time, req.importance),
+            source=req.source,
+            content_hash=_content_hash(req.content),
+        )
+        db.add(mem)
+        await db.flush()  # get mem.id
 
-    # Audit log for the add
-    db.add(EventLog(
-        namespace=namespace,
-        agent_id=req.agent_id,
-        op="add",
-        memory_id=mem.id,
-        content_hash=mem.content_hash,
-        payload={
-            "source": req.source,
-            "event_time": req.event_time.isoformat(),
-            "metadata": req.metadata,
-            "supersession_relation": supersession.relation,
-            "supersession_confidence": supersession.confidence,
-        },
-    ))
+        for old_id in supersession.superseded_ids:
+            old = await db.get(Memory, old_id)
+            if old:
+                old.valid_to = req.event_time
+                old.superseded_by = mem.id
+                old.supersession_confidence = supersession.confidence
+                db.add(EventLog(
+                    namespace=namespace,
+                    agent_id=req.agent_id,
+                    op="supersede",
+                    memory_id=old.id,
+                    content_hash=old.content_hash,
+                    payload={
+                        "superseded_by": str(mem.id),
+                        "confidence": supersession.confidence,
+                        "relation": supersession.relation,
+                        "rationale": supersession.rationale,
+                        "adjudication_stage": 3 if supersession.rationale else 2,
+                    },
+                ))
 
-    await db.commit()
+        db.add(EventLog(
+            namespace=namespace,
+            agent_id=req.agent_id,
+            op="add",
+            memory_id=mem.id,
+            content_hash=mem.content_hash,
+            payload={
+                "source": req.source,
+                "event_time": req.event_time.isoformat(),
+                "metadata": req.metadata,
+                "supersession_relation": supersession.relation,
+                "supersession_confidence": supersession.confidence,
+            },
+        ))
+
+        await db.commit()
+    # ── End critical section ────────────────────────────────────────────────
+
     await db.refresh(mem)
     return _memory_to_out(mem, req.content)
 
