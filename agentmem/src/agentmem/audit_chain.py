@@ -234,26 +234,27 @@ async def verify_chain(
     result = await db.execute(stmt)
     rows = result.scalars().all()
 
-    known_hashes: set[str] = {GENESIS_HASH}
+    # Build a global set of all row_hashes present so orphan detection doesn't
+    # depend on processing order (which can be wrong when two rows share the
+    # same created_at microsecond and UUID ordering != insertion ordering).
+    all_row_hashes: set[str] = {GENESIS_HASH}
+    all_row_hashes.update(r.row_hash for r in rows if r.row_hash is not None)
+
     violations: list[ChainViolation] = []
 
     for row in rows:
         row_id = str(row.id)
 
         if row.row_hash is None or row.prev_hash is None:
-            # Pre-chain rows (before migration 0006) — add hash to known set
-            # so they don't cause false orphan reports for newer rows.
-            if row.row_hash:
-                known_hashes.add(row.row_hash)
-            continue
+            continue  # pre-chain rows (before migration 0006) — skip
 
-        # 1. Detect deleted predecessor
-        if row.prev_hash not in known_hashes:
+        # 1. Detect deleted predecessor — prev_hash must point to an existing row
+        if row.prev_hash not in all_row_hashes:
             violations.append(ChainViolation(
                 row_id=row_id,
                 kind="orphaned_parent",
                 detail=(
-                    f"prev_hash {row.prev_hash[:16]}… not found among preceding rows; "
+                    f"prev_hash {row.prev_hash[:16]}… not found in namespace; "
                     f"a row may have been deleted from the chain"
                 ),
             ))
@@ -270,11 +271,88 @@ async def verify_chain(
                 ),
             ))
 
-        known_hashes.add(row.row_hash)
-
     return {
         "namespace": namespace,
         "rows_checked": len(rows),
         "status": "ok" if not violations else "tampered",
         "violations": [v.to_dict() for v in violations],
+    }
+
+
+# ── Bulk export (for regulatory examination) ─────────────────────────────────
+
+def _row_to_dict(row: EventLog) -> dict:
+    return {
+        "id": str(row.id),
+        "namespace": row.namespace,
+        "agent_id": row.agent_id,
+        "op": row.op,
+        "memory_id": str(row.memory_id) if row.memory_id is not None else None,
+        "content_hash": row.content_hash,
+        "payload": row.payload if row.payload is not None else {},
+        "created_at": row.created_at,
+        "prev_hash": row.prev_hash,
+        "row_hash": row.row_hash,
+    }
+
+
+async def export_audit_log(
+    db: AsyncSession,
+    namespace: str,
+    from_dt: Optional[datetime] = None,
+    to_dt: Optional[datetime] = None,
+    limit: int = 100_000,
+    include_chain_status: bool = False,
+) -> dict:
+    """
+    Export event_log rows for *namespace* in the given time window.
+
+    Parameters
+    ----------
+    from_dt:
+        Lower bound on created_at (inclusive).  None = earliest row.
+    to_dt:
+        Upper bound on created_at (inclusive).  None = latest row.
+    limit:
+        Maximum number of rows returned (hard cap — add pagination via
+        from_dt/to_dt if you need more).
+    include_chain_status:
+        When True, also runs verify_chain() and includes the result.
+        Adds one extra full-table scan; disable for raw-data-only exports.
+
+    Returns a dict matching AuditExportResult schema.
+    """
+    from sqlalchemy import and_
+
+    filters = [EventLog.namespace == namespace]
+    if from_dt is not None:
+        filters.append(EventLog.created_at >= from_dt)
+    if to_dt is not None:
+        filters.append(EventLog.created_at <= to_dt)
+
+    stmt = (
+        select(EventLog)
+        .where(and_(*filters))
+        .order_by(EventLog.created_at.asc(), EventLog.id.asc())
+        .limit(limit)
+        .execution_options(populate_existing=True)
+    )
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+
+    chain_status: Optional[str] = None
+    chain_violations: Optional[list] = None
+    if include_chain_status:
+        verify_result = await verify_chain(db, namespace=namespace, limit=limit)
+        chain_status = verify_result["status"]
+        chain_violations = verify_result["violations"]
+
+    return {
+        "namespace": namespace,
+        "from_": from_dt,
+        "to": to_dt,
+        "total_rows": len(rows),
+        "chain_status": chain_status,
+        "chain_violations": chain_violations,
+        "events": [_row_to_dict(r) for r in rows],
     }

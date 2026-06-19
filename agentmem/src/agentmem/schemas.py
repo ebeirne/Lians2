@@ -188,3 +188,26 @@ class AuditChainVerifyResult(BaseModel):
     rows_checked: int
     status: str          # "ok" | "tampered"
     violations: list[AuditChainViolation]
+
+
+class AuditExportRow(BaseModel):
+    id: str
+    namespace: str
+    agent_id: str
+    op: str
+    memory_id: Optional[str]
+    content_hash: Optional[str]
+    payload: dict[str, Any]
+    created_at: datetime
+    prev_hash: Optional[str]
+    row_hash: Optional[str]
+
+
+class AuditExportResult(BaseModel):
+    namespace: str
+    from_: Optional[datetime] = None
+    to: Optional[datetime] = None
+    total_rows: int
+    chain_status: Optional[str] = None   # "ok" | "tampered" | None (not verified)
+    chain_violations: Optional[list[AuditChainViolation]] = None
+    events: list[AuditExportRow]

@@ -23,10 +23,10 @@ from ..schemas import (
     ApiKeyCreate, ApiKeyCreated, ApiKeyOut,
     BarrierGroupAssign, BarrierGroupOut,
     RetentionPolicyIn, RetentionPolicyOut, RetentionPruneResult,
-    AuditChainVerifyResult,
+    AuditChainVerifyResult, AuditExportResult,
 )
 from ..memory_service import get_retention_policy, set_retention_policy, prune_expired_content
-from ..audit_chain import verify_chain
+from ..audit_chain import verify_chain, export_audit_log
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 
@@ -353,3 +353,67 @@ async def verify_audit_chain(
     """
     report = await verify_chain(db, namespace=namespace, limit=limit)
     return AuditChainVerifyResult(**report)
+
+
+# ── Audit log export ─────────────────────────────────────────────────────────
+
+@router.get(
+    "/audit/export",
+    response_model=AuditExportResult,
+    summary="Export the full audit log for a namespace (for SEC/FINRA/CFTC examiners)",
+)
+async def export_audit(
+    namespace: str = Query(..., description="Namespace to export"),
+    from_: Optional[datetime] = Query(
+        default=None, alias="from",
+        description="Lower bound on created_at (inclusive).  ISO-8601 UTC.",
+    ),
+    to: Optional[datetime] = Query(
+        default=None,
+        description="Upper bound on created_at (inclusive).  ISO-8601 UTC.",
+    ),
+    limit: int = Query(
+        default=100_000, ge=1, le=1_000_000,
+        description="Hard cap on rows returned.  Paginate via from/to if needed.",
+    ),
+    verify: bool = Query(
+        default=False,
+        description=(
+            "When true, also runs the hash-chain verifier and includes chain_status "
+            "and chain_violations in the response.  Adds one extra table scan."
+        ),
+    ),
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AuditExportResult:
+    """
+    Export event_log rows for *namespace* ordered chronologically.
+
+    Designed for regulatory examiners (SEC, FINRA, CFTC) who need the full
+    immutable audit trail for a namespace within a date range.
+
+    **Pagination:** The default limit is 100 000 rows.  For namespaces with more
+    activity, paginate by setting `from` to the `created_at` of the last row
+    in the previous response.
+
+    **Chain verification:** Pass `verify=true` to include a tamper-evidence
+    report alongside the export data.  This runs `verify_chain()` over the full
+    namespace (not just the exported window) so the examiner gets a complete
+    chain-of-custody verdict.
+
+    **Output fields per event:**
+    - `id`, `namespace`, `agent_id`, `op` — who did what
+    - `memory_id`, `content_hash` — which memory row was affected
+    - `payload` — operation-specific context (e.g. superseded_by, query_hash)
+    - `created_at` — when the event was ingested (UTC)
+    - `prev_hash`, `row_hash` — hash-chain links for independent verification
+    """
+    data = await export_audit_log(
+        db,
+        namespace=namespace,
+        from_dt=from_,
+        to_dt=to,
+        limit=limit,
+        include_chain_status=verify,
+    )
+    return AuditExportResult(**data)

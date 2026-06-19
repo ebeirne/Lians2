@@ -77,8 +77,10 @@ class TestChainLogUnit:
         assert row.prev_hash == GENESIS_HASH
 
     async def test_second_row_prev_hash_points_to_first(self, db):
+        import asyncio
         r1 = await chain_log(db, namespace="unit-ns-2", agent_id="a", op="add",
                               content_hash="h1")
+        await asyncio.sleep(0.025)          # guarantee r2.created_at > r1.created_at on Windows
         r2 = await chain_log(db, namespace="unit-ns-2", agent_id="a", op="recall")
         await db.commit()
         assert r2.prev_hash == r1.row_hash
@@ -116,9 +118,12 @@ class TestChainLogUnit:
         assert tip_after == row.row_hash
 
     async def test_three_row_chain_is_linear(self, db):
+        import asyncio
         ns = "unit-ns-5"
         r1 = await chain_log(db, ns, "a", "add",    content_hash="h1")
+        await asyncio.sleep(0.025)          # guarantee distinct created_at for each row on Windows
         r2 = await chain_log(db, ns, "a", "recall", content_hash="h2")
+        await asyncio.sleep(0.025)
         r3 = await chain_log(db, ns, "a", "erase",  content_hash="h3")
         await db.commit()
 
@@ -146,9 +151,12 @@ class TestVerifyChain:
         assert report["violations"] == []
 
     async def test_clean_chain_passes(self, db):
+        import asyncio
         ns = "verify-clean"
         await chain_log(db, ns, "a", "add",    content_hash="h1")
+        await asyncio.sleep(0.025)
         await chain_log(db, ns, "a", "recall", content_hash="h2")
+        await asyncio.sleep(0.025)
         await chain_log(db, ns, "a", "erase",  content_hash="h3")
         await db.commit()
 
@@ -182,9 +190,12 @@ class TestVerifyChain:
         assert str(r1.id) in tampered_ids
 
     async def test_deleted_row_detected_as_orphaned_parent(self, db):
+        import asyncio
         ns = "verify-delete"
         r1 = await chain_log(db, ns, "a", "add", content_hash="h1")
+        await asyncio.sleep(0.025)          # ensure get_chain_tip picks r2 (not r1) as r3's prev
         await chain_log(db, ns, "a", "recall")
+        await asyncio.sleep(0.025)
         r3 = await chain_log(db, ns, "a", "erase", content_hash="h3")
         await db.commit()
 
@@ -308,3 +319,174 @@ class TestVerifyEndpoint:
         assert "status" in body
         assert "violations" in body
         assert isinstance(body["violations"], list)
+
+
+# ── Audit export (service + HTTP endpoint) ───────────────────────────────────
+
+class TestAuditExport:
+
+    async def test_export_returns_all_events_in_namespace(self, db):
+        from src.agentmem.audit_chain import export_audit_log
+        ns = "export-ns-1"
+        await chain_log(db, ns, "a", "add",    content_hash="h1")
+        await chain_log(db, ns, "a", "recall", content_hash="h2")
+        await chain_log(db, ns, "a", "erase",  content_hash="h3")
+        await db.commit()
+
+        result = await export_audit_log(db, namespace=ns)
+        assert result["total_rows"] == 3
+        assert result["namespace"] == ns
+        assert len(result["events"]) == 3
+        ops = [e["op"] for e in result["events"]]
+        # "add" is always first; "recall" and "erase" may swap if sub-µs collision
+        assert ops[0] == "add"
+        assert set(ops) == {"add", "recall", "erase"}
+
+    async def test_export_events_have_hash_chain_fields(self, db):
+        from src.agentmem.audit_chain import export_audit_log
+        ns = "export-ns-2"
+        await chain_log(db, ns, "a", "add", content_hash="h1")
+        await db.commit()
+
+        result = await export_audit_log(db, namespace=ns)
+        evt = result["events"][0]
+        assert "prev_hash" in evt
+        assert "row_hash" in evt
+        assert evt["prev_hash"] == GENESIS_HASH
+        assert len(evt["row_hash"]) == 64
+
+    async def test_export_filters_by_from_dt(self, db):
+        import asyncio
+        from src.agentmem.audit_chain import export_audit_log
+        from datetime import timedelta
+        ns = "export-ns-3"
+        r1 = await chain_log(db, ns, "a", "add", content_hash="h1")
+        t1 = r1.created_at
+        await asyncio.sleep(0.025)          # ensure r2 gets a strictly later timestamp on Windows
+        await chain_log(db, ns, "a", "recall")
+        await db.commit()
+
+        # from_dt = slightly after the first row's created_at
+        result = await export_audit_log(db, namespace=ns, from_dt=t1 + timedelta(microseconds=1))
+        assert result["total_rows"] == 1
+        assert result["events"][0]["op"] == "recall"
+
+    async def test_export_filters_by_to_dt(self, db):
+        import asyncio
+        from src.agentmem.audit_chain import export_audit_log
+        ns = "export-ns-4"
+        r1 = await chain_log(db, ns, "a", "add", content_hash="h1")
+        t1 = r1.created_at
+        await asyncio.sleep(0.025)          # ensure r2 gets a strictly later timestamp on Windows
+        await chain_log(db, ns, "a", "recall")
+        await db.commit()
+
+        result = await export_audit_log(db, namespace=ns, to_dt=t1)
+        assert result["total_rows"] == 1
+        assert result["events"][0]["op"] == "add"
+
+    async def test_export_empty_namespace_returns_zero_rows(self, db):
+        from src.agentmem.audit_chain import export_audit_log
+        result = await export_audit_log(db, namespace="export-empty")
+        assert result["total_rows"] == 0
+        assert result["events"] == []
+        assert result["chain_status"] is None
+
+    async def test_export_with_verify_includes_chain_status(self, db):
+        from src.agentmem.audit_chain import export_audit_log
+        ns = "export-ns-5"
+        await chain_log(db, ns, "a", "add", content_hash="h1")
+        await db.commit()
+
+        result = await export_audit_log(db, namespace=ns, include_chain_status=True)
+        assert result["chain_status"] == "ok"
+        assert result["chain_violations"] == []
+
+    async def test_export_excludes_other_namespaces(self, db):
+        from src.agentmem.audit_chain import export_audit_log
+        await chain_log(db, "export-ns-6a", "a", "add", content_hash="h1")
+        await chain_log(db, "export-ns-6b", "b", "add", content_hash="h2")
+        await db.commit()
+
+        result_a = await export_audit_log(db, namespace="export-ns-6a")
+        result_b = await export_audit_log(db, namespace="export-ns-6b")
+        assert result_a["total_rows"] == 1
+        assert result_b["total_rows"] == 1
+        assert result_a["events"][0]["agent_id"] == "a"
+        assert result_b["events"][0]["agent_id"] == "b"
+
+
+class TestAuditExportEndpoint:
+
+    async def test_export_endpoint_returns_events(self, client):
+        await client.post(
+            "/v1/memories",
+            json=_mem("NVDA guidance export test"),
+            headers={"X-API-Key": "chain-test-key"},
+        )
+
+        resp = await client.get(
+            "/v1/admin/audit/export",
+            params={"namespace": TEST_NS},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["namespace"] == TEST_NS
+        assert body["total_rows"] >= 1
+        assert isinstance(body["events"], list)
+        assert len(body["events"]) >= 1
+
+    async def test_export_event_shape(self, client):
+        await client.post(
+            "/v1/memories",
+            json=_mem("AAPL shape test"),
+            headers={"X-API-Key": "chain-test-key"},
+        )
+
+        resp = await client.get(
+            "/v1/admin/audit/export",
+            params={"namespace": TEST_NS},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+        assert resp.status_code == 200
+        evt = resp.json()["events"][0]
+        required = {"id", "namespace", "agent_id", "op", "content_hash",
+                    "payload", "created_at", "prev_hash", "row_hash"}
+        assert required.issubset(evt.keys())
+
+    async def test_export_requires_admin_secret(self, client):
+        resp = await client.get(
+            "/v1/admin/audit/export",
+            params={"namespace": TEST_NS},
+        )
+        assert resp.status_code == 401
+
+    async def test_export_with_verify_flag(self, client):
+        await client.post(
+            "/v1/memories",
+            json=_mem("verify flag test"),
+            headers={"X-API-Key": "chain-test-key"},
+        )
+
+        resp = await client.get(
+            "/v1/admin/audit/export",
+            params={"namespace": TEST_NS, "verify": "true"},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["chain_status"] == "ok"
+        assert body["chain_violations"] == []
+
+    async def test_export_empty_namespace(self, client):
+        resp = await client.get(
+            "/v1/admin/audit/export",
+            params={"namespace": "export-empty-ns"},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total_rows"] == 0
+        assert body["events"] == []
+        assert body["chain_status"] is None

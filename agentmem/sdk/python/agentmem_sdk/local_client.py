@@ -234,3 +234,63 @@ class LocalAgentMemClient:
             "memories_erased": count,
             "request_ref": request_ref,
         }
+
+    def audit_export(
+        self,
+        from_dt: Optional[datetime] = None,
+        to_dt: Optional[datetime] = None,
+        limit: int = 100_000,
+        verify: bool = False,
+    ) -> dict:
+        """
+        Export the full audit log for this namespace.
+
+        Returns a dict matching AuditExportResult schema with an ``events``
+        list of all event_log rows in chronological order.  Pass ``verify=True``
+        to include a tamper-evidence chain verification report.
+        """
+        return self._run(self._async_audit_export(
+            from_dt=from_dt, to_dt=to_dt, limit=limit, include_chain_status=verify,
+        ))
+
+    async def _async_audit_export(
+        self,
+        from_dt: Optional[datetime],
+        to_dt: Optional[datetime],
+        limit: int,
+        include_chain_status: bool,
+    ) -> dict:
+        from src.agentmem.audit_chain import export_audit_log
+        async with self._session_factory() as db:
+            result = await export_audit_log(
+                db,
+                namespace=self._namespace,
+                from_dt=from_dt,
+                to_dt=to_dt,
+                limit=limit,
+                include_chain_status=include_chain_status,
+            )
+        # Serialize datetimes to ISO strings for consistent dict output
+        for evt in result.get("events", []):
+            if isinstance(evt.get("created_at"), datetime):
+                evt["created_at"] = evt["created_at"].isoformat()
+        if result.get("from_") and isinstance(result["from_"], datetime):
+            result["from_"] = result["from_"].isoformat()
+        if result.get("to") and isinstance(result["to"], datetime):
+            result["to"] = result["to"].isoformat()
+        return result
+
+    def verify_chain(self) -> dict:
+        """
+        Verify the SEC 17a-4 tamper-evidence hash chain for this namespace.
+
+        Returns ``{"status": "ok", "rows_checked": N, "violations": []}``
+        or ``{"status": "tampered", "violations": [...]}`` with details on
+        every broken link.
+        """
+        return self._run(self._async_verify_chain())
+
+    async def _async_verify_chain(self) -> dict:
+        from src.agentmem.audit_chain import verify_chain
+        async with self._session_factory() as db:
+            return await verify_chain(db, namespace=self._namespace)
