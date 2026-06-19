@@ -163,12 +163,15 @@ async def health(db: AsyncSession = Depends(_get_db)):
     except Exception as exc:
         checks["db"] = f"error: {type(exc).__name__}"
 
-    # Redis — PING with a 1-second timeout
-    try:
-        await asyncio.wait_for(_get_redis().ping(), timeout=1.0)
-        checks["redis"] = "ok"
-    except Exception as exc:
-        checks["redis"] = f"error: {type(exc).__name__}"
+    # Redis — PING with a 1-second timeout (skipped when cache is disabled)
+    if get_settings().recall_cache_enabled:
+        try:
+            await asyncio.wait_for(_get_redis().ping(), timeout=1.0)
+            checks["redis"] = "ok"
+        except Exception as exc:
+            checks["redis"] = f"error: {type(exc).__name__}"
+    else:
+        checks["redis"] = "disabled"
 
     all_ok = all(v == "ok" for v in checks.values())
     return JSONResponse(
