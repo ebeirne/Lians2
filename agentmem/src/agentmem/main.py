@@ -52,9 +52,10 @@ def _validate_airgap(settings) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from .db import engine
+    from .db import engine, AsyncSessionLocal
     from .config import get_settings
     from .kms import load_master_key
+    from .scheduler import run_retention_scheduler
     settings = get_settings()
 
     setup_logging(level=settings.log_level, json_logs=settings.log_json)
@@ -72,7 +73,22 @@ async def lifespan(app: FastAPI):
     })
 
     instrument_sqlalchemy(engine)
+
+    scheduler_task: asyncio.Task | None = None
+    if settings.retention_prune_interval_hours > 0:
+        scheduler_task = asyncio.create_task(
+            run_retention_scheduler(AsyncSessionLocal, settings.retention_prune_interval_hours),
+            name="retention-scheduler",
+        )
+
     yield
+
+    if scheduler_task is not None:
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
 
     logger.info("AgentMem shutdown")
 

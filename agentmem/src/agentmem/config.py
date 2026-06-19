@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # Rate limiting (per API key, sliding window)
     rate_limit_per_minute: int = 300
 
+    # Background retention scheduler
+    # Interval between automated prune cycles (hours). Set to 0 to disable.
+    retention_prune_interval_hours: float = 24.0
+
     # Air-gapped mode — guarantees no customer data leaves the deployment boundary.
     # When True, startup validation enforces:
     #   1. EMBEDDING_PROVIDER must be "sentence-transformers" or "local"

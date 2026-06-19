@@ -26,11 +26,12 @@ from ..schemas import (
     AuditChainVerifyResult, AuditExportResult,
 )
 from ..memory_service import get_retention_policy, set_retention_policy, prune_expired_content
-from ..audit_chain import verify_chain, export_audit_log
+from ..audit_chain import verify_chain, export_audit_log, chain_log
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 
 _admin_header = APIKeyHeader(name="X-Admin-Secret", auto_error=False)
+_ADMIN_AGENT = "__admin__"
 
 
 def _hash(raw: str) -> str:
@@ -67,6 +68,12 @@ async def provision_key(
         scopes=body.scopes,
     )
     db.add(row)
+    await db.flush()
+    await chain_log(
+        db, namespace=body.namespace, agent_id=_ADMIN_AGENT,
+        op="admin.key_provision",
+        payload={"key_id": str(row.id), "label": body.label, "scopes": list(body.scopes)},
+    )
     await db.commit()
     await db.refresh(row)
     return ApiKeyCreated(
@@ -129,6 +136,11 @@ async def revoke_key(
     if row.revoked_at is not None:
         raise HTTPException(status_code=409, detail="API key already revoked")
     row.revoked_at = datetime.now(timezone.utc)
+    await chain_log(
+        db, namespace=row.namespace, agent_id=_ADMIN_AGENT,
+        op="admin.key_revoke",
+        payload={"key_id": str(key_id), "label": row.label},
+    )
     await db.commit()
     return Response(status_code=204)
 
@@ -162,6 +174,12 @@ async def rotate_key(
         scopes=old.scopes,
     )
     db.add(new_row)
+    await db.flush()
+    await chain_log(
+        db, namespace=old.namespace, agent_id=_ADMIN_AGENT,
+        op="admin.key_rotate",
+        payload={"old_key_id": str(key_id), "new_key_id": str(new_row.id), "label": old.label},
+    )
     await db.commit()
     await db.refresh(new_row)
     return ApiKeyCreated(
@@ -214,6 +232,11 @@ async def assign_barrier_group(
             group_name=body.group_name,
         )
         db.add(row)
+    await chain_log(
+        db, namespace=namespace, agent_id=_ADMIN_AGENT,
+        op="admin.barrier_assign",
+        payload={"agent_id": body.agent_id, "group_name": body.group_name},
+    )
     await db.commit()
     await db.refresh(row)
     return BarrierGroupOut.model_validate(row)
@@ -250,6 +273,11 @@ async def remove_barrier_group(
     if row is None or row.namespace != namespace:
         raise HTTPException(status_code=404, detail="Barrier group assignment not found")
     await db.delete(row)
+    await chain_log(
+        db, namespace=namespace, agent_id=_ADMIN_AGENT,
+        op="admin.barrier_remove",
+        payload={"agent_id": agent_id},
+    )
     await db.commit()
     return Response(status_code=204)
 

@@ -482,6 +482,7 @@ async def set_retention_policy(
     db: AsyncSession,
     namespace: str,
     data: RetentionPolicyIn,
+    actor_id: str = "__admin__",
 ) -> RetentionPolicyOut:
     """Upsert the retention policy for a namespace."""
     pol = await db.get(NamespacePolicy, namespace)
@@ -492,6 +493,15 @@ async def set_retention_policy(
     pol.audit_retention_days = data.audit_retention_days
     pol.legal_hold = data.legal_hold
     pol.updated_at = datetime.now(timezone.utc)
+    await chain_log(
+        db, namespace=namespace, agent_id=actor_id,
+        op="admin.retention_set",
+        payload={
+            "content_ttl_days": data.content_ttl_days,
+            "audit_retention_days": data.audit_retention_days,
+            "legal_hold": data.legal_hold,
+        },
+    )
     await db.commit()
     await db.refresh(pol)
     return RetentionPolicyOut.model_validate(pol)

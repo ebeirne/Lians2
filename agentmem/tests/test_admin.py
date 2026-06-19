@@ -8,6 +8,7 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import StaticPool
 
@@ -426,3 +427,160 @@ class TestRotate:
         old_id = r.json()["id"]
         resp = await app_client.post(f"/v1/admin/api-keys/{old_id}/rotate")
         assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Admin operation audit trail
+# ---------------------------------------------------------------------------
+
+class TestAdminAuditTrail:
+    """Every state-mutating admin operation must write an event_log entry."""
+
+    async def _audit_rows(self, app_client, namespace: str) -> list[dict]:
+        """Export all audit rows for a namespace so we can assert on them."""
+        resp = await app_client.get(
+            "/v1/admin/audit/export",
+            params={"namespace": namespace},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()["events"]
+
+    @pytest.mark.asyncio
+    async def test_provision_writes_audit_row(self, app_client):
+        resp = await app_client.post(
+            "/v1/admin/api-keys",
+            json={"namespace": "audit-prov", "scopes": ["read"], "label": "svc"},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+        assert resp.status_code == 201
+        key_id = resp.json()["id"]
+
+        events = await self._audit_rows(app_client, "audit-prov")
+        ops = [e["op"] for e in events]
+        assert "admin.key_provision" in ops
+        prov = next(e for e in events if e["op"] == "admin.key_provision")
+        assert prov["agent_id"] == "__admin__"
+        assert prov["payload"]["key_id"] == key_id
+        assert prov["payload"]["label"] == "svc"
+
+    @pytest.mark.asyncio
+    async def test_revoke_writes_audit_row(self, app_client):
+        r = await app_client.post(
+            "/v1/admin/api-keys",
+            json={"namespace": "audit-rev", "scopes": ["read"]},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+        key_id = r.json()["id"]
+
+        await app_client.delete(
+            f"/v1/admin/api-keys/{key_id}",
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+
+        events = await self._audit_rows(app_client, "audit-rev")
+        ops = [e["op"] for e in events]
+        assert "admin.key_revoke" in ops
+        rev = next(e for e in events if e["op"] == "admin.key_revoke")
+        assert rev["payload"]["key_id"] == key_id
+
+    @pytest.mark.asyncio
+    async def test_rotate_writes_audit_row(self, app_client):
+        r = await app_client.post(
+            "/v1/admin/api-keys",
+            json={"namespace": "audit-rot", "scopes": ["read"], "label": "svc-rot"},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+        old_id = r.json()["id"]
+
+        rot = await app_client.post(
+            f"/v1/admin/api-keys/{old_id}/rotate",
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+        new_id = rot.json()["id"]
+
+        events = await self._audit_rows(app_client, "audit-rot")
+        ops = [e["op"] for e in events]
+        assert "admin.key_rotate" in ops
+        entry = next(e for e in events if e["op"] == "admin.key_rotate")
+        assert entry["payload"]["old_key_id"] == old_id
+        assert entry["payload"]["new_key_id"] == new_id
+
+    @pytest.mark.asyncio
+    async def test_barrier_assign_writes_audit_row(self, app_client):
+        await app_client.post(
+            "/v1/admin/barriers",
+            params={"namespace": "audit-bar"},
+            json={"agent_id": "agent-eq", "group_name": "equity_desk"},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+
+        events = await self._audit_rows(app_client, "audit-bar")
+        ops = [e["op"] for e in events]
+        assert "admin.barrier_assign" in ops
+        entry = next(e for e in events if e["op"] == "admin.barrier_assign")
+        assert entry["payload"]["agent_id"] == "agent-eq"
+        assert entry["payload"]["group_name"] == "equity_desk"
+
+    @pytest.mark.asyncio
+    async def test_barrier_remove_writes_audit_row(self, app_client):
+        await app_client.post(
+            "/v1/admin/barriers",
+            params={"namespace": "audit-bar2"},
+            json={"agent_id": "agent-fi", "group_name": "fixed_income"},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+        await app_client.delete(
+            "/v1/admin/barriers/agent-fi",
+            params={"namespace": "audit-bar2"},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+
+        events = await self._audit_rows(app_client, "audit-bar2")
+        ops = [e["op"] for e in events]
+        assert "admin.barrier_remove" in ops
+        entry = next(e for e in events if e["op"] == "admin.barrier_remove")
+        assert entry["payload"]["agent_id"] == "agent-fi"
+
+    @pytest.mark.asyncio
+    async def test_retention_set_writes_audit_row(self, app_client):
+        await app_client.put(
+            "/v1/admin/retention/audit-ret",
+            json={"content_ttl_days": 365, "audit_retention_days": 1825, "legal_hold": False},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+
+        events = await self._audit_rows(app_client, "audit-ret")
+        ops = [e["op"] for e in events]
+        assert "admin.retention_set" in ops
+        entry = next(e for e in events if e["op"] == "admin.retention_set")
+        assert entry["payload"]["content_ttl_days"] == 365
+        assert entry["payload"]["legal_hold"] is False
+
+    @pytest.mark.asyncio
+    async def test_audit_chain_survives_all_admin_ops(self, app_client):
+        """All admin audit rows must form a valid hash chain."""
+        r = await app_client.post(
+            "/v1/admin/api-keys",
+            json={"namespace": "audit-chain", "scopes": ["read", "write"], "label": "x"},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+        key_id = r.json()["id"]
+
+        await app_client.post(
+            f"/v1/admin/api-keys/{key_id}/rotate",
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+        await app_client.put(
+            "/v1/admin/retention/audit-chain",
+            json={"content_ttl_days": 90, "audit_retention_days": 1825, "legal_hold": False},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+
+        verify = await app_client.get(
+            "/v1/admin/audit/verify",
+            params={"namespace": "audit-chain"},
+            headers={"X-Admin-Secret": ADMIN_SECRET},
+        )
+        assert verify.status_code == 200
+        assert verify.json()["status"] == "ok"
