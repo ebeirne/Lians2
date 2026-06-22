@@ -1,4 +1,4 @@
-"""
+﻿"""
 Lian Python SDK — financial-grade AI memory with compliance built in.
 
 Three clients, same API surface:
@@ -36,13 +36,13 @@ Framework integrations (optional extras)::
 
 Install with extras::
 
-    pip install lian[langchain]       # LangChain chat history + tools
-    pip install lian[langgraph]       # LangGraph node factories
-    pip install lian[crewai]          # CrewAI BaseTool wrappers
-    pip install lian[openai-agents]   # OpenAI Agents SDK FunctionTools
-    pip install lian[autogen]         # AutoGen v0.4 FunctionTools
-    pip install lian[local]           # LocalLianClient (SQLite)
-    pip install lian[all]             # Everything
+    pip install lian-sdk[langchain]       # LangChain chat history + tools
+    pip install lian-sdk[langgraph]       # LangGraph node factories
+    pip install lian-sdk[crewai]          # CrewAI BaseTool wrappers
+    pip install lian-sdk[openai-agents]   # OpenAI Agents SDK FunctionTools
+    pip install lian-sdk[autogen]         # AutoGen v0.4 FunctionTools
+    pip install lian-sdk[local]           # LocalLianClient (SQLite)
+    pip install lian-sdk[all]             # Everything
 """
 from .sync_client import LianClient
 from .client import AsyncLianClient

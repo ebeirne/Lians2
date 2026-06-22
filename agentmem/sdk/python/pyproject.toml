@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "lian"
+name = "lian-sdk"
 version = "0.1.0"
 description = "Financial-grade AI memory — bitemporal facts, SEC 17a-4 audit chain, GDPR crypto-shred"
 requires-python = ">=3.10"
@@ -32,7 +32,7 @@ openai-agents = ["openai-agents>=0.0.1"]
 autogen       = ["autogen-core>=0.4"]
 local         = ["sqlalchemy>=2.0", "aiosqlite>=0.19"]
 all           = [
-    "lian[langchain,langgraph,crewai,openai-agents,autogen,local]",
+    "lian-sdk[langchain,langgraph,crewai,openai-agents,autogen,local]",
 ]
 
 [project.urls]

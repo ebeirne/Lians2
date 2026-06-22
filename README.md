@@ -1,4 +1,4 @@
-# Lian
+﻿# Lian (蓮)
 
 **Financial-grade agent memory** — the only memory layer designed for regulated environments.
 
@@ -62,7 +62,7 @@ The seed script prints a **read-only API key**. Open `demo/index.html` in your b
 ## Quickstart (Python SDK)
 
 ```bash
-pip install lian[local]   # zero-setup local SQLite mode — no Docker needed
+pip install lian-sdk[local]   # zero-setup local SQLite mode — no Docker needed
 ```
 
 ```python
@@ -112,11 +112,11 @@ result = mem.recall_at(
 
 | Framework | Install | Import |
 |-----------|---------|--------|
-| **LangChain** | `pip install lian[langchain]` | `from lian.langchain_integration import LianChatHistory, build_tools` |
-| **LangGraph** | `pip install lian[langgraph]` | `from lian.langgraph_integration import create_recall_node, create_remember_node` |
-| **CrewAI** | `pip install lian[crewai]` | `from lian.crewai_integration import build_crewai_tools` |
-| **OpenAI Agents SDK** | `pip install lian[openai-agents]` | `from lian.openai_agents_integration import build_openai_agent_tools` |
-| **AutoGen v0.4** | `pip install lian[autogen]` | `from lian.autogen_integration import build_autogen_tools` |
+| **LangChain** | `pip install lian-sdk[langchain]` | `from lian.langchain_integration import LianChatHistory, build_tools` |
+| **LangGraph** | `pip install lian-sdk[langgraph]` | `from lian.langgraph_integration import create_recall_node, create_remember_node` |
+| **CrewAI** | `pip install lian-sdk[crewai]` | `from lian.crewai_integration import build_crewai_tools` |
+| **OpenAI Agents SDK** | `pip install lian-sdk[openai-agents]` | `from lian.openai_agents_integration import build_openai_agent_tools` |
+| **AutoGen v0.4** | `pip install lian-sdk[autogen]` | `from lian.autogen_integration import build_autogen_tools` |
 | **TypeScript / Node** | `npm install lian` | `import { LianClient } from "lian"` |
 
 All integrations expose the same three tools: `remember`, `recall`, `recall_at`. The `recall_at` tool is the compliance differentiator — it answers "what did the agent know at T?" with a verifiable hash chain.

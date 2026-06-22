@@ -1,18 +1,18 @@
-# Lian (蓮)
+﻿# Lian (蓮)
 
 **Financial-grade AI memory** — bitemporal facts, SEC 17a-4 audit chain, GDPR crypto-shred.
 
 ## Install
 
 ```bash
-pip install lian               # HTTP client only
-pip install lian[local]        # + zero-setup SQLite mode (no server needed)
-pip install lian[langchain]    # + LangChain chat history & tools
-pip install lian[langgraph]    # + LangGraph node factories
-pip install lian[crewai]       # + CrewAI BaseTool wrappers
-pip install lian[openai-agents] # + OpenAI Agents SDK tools
-pip install lian[autogen]      # + AutoGen v0.4 tools
-pip install lian[all]          # Everything
+pip install lian-sdk          # HTTP client only
+pip install lian-sdk[local]        # + zero-setup SQLite mode (no server needed)
+pip install lian-sdk[langchain]    # + LangChain chat history & tools
+pip install lian-sdk[langgraph]    # + LangGraph node factories
+pip install lian-sdk[crewai]       # + CrewAI BaseTool wrappers
+pip install lian-sdk[openai-agents] # + OpenAI Agents SDK tools
+pip install lian-sdk[autogen]      # + AutoGen v0.4 tools
+pip install lian-sdk[all]          # Everything
 ```
 
 ## Quickstart
