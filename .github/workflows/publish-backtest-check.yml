@@ -3,13 +3,13 @@ name: Publish agentmem-backtest-check to PyPI
 # Trigger: push a tag named backtest-check-v<semver>, e.g. backtest-check-v0.1.0
 #
 # Setup required (one-time, on PyPI):
-#   1. Go to https://pypi.org/manage/project/agentmem-backtest-check/settings/publishing/
-#   2. Add a "trusted publisher" for this GitHub repo:
-#      - Owner:      <your-github-org-or-username>
-#      - Repository: AI_Memory_Software_lotus
-#      - Workflow:   publish-backtest-check.yml
-#      - Environment: pypi
-#   No API token or secret needed — OIDC trusted publishing handles auth.
+# 1. Go to https://pypi.org/manage/project/agentmem-backtest-check/settings/publishing/
+# 2. Add a "trusted publisher" for this GitHub repo:
+# - Owner:      <your-github-org-or-username>
+# - Repository: AI_Memory_Software_lotus
+# - Workflow:   publish-backtest-check.yml
+# - Environment: pypi
+# No API token or secret needed — OIDC trusted publishing handles auth.
 
 on:
   push:

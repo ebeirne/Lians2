@@ -34,7 +34,7 @@
 </p>
 
 <p align="center">
-  <a href="docs/benchmark.md"><strong>📄 Benchmark: 0 stale facts in top-5 vs mem0's 4/4 — and 100% supersession accuracy →</strong></a>
+  <a href="docs/benchmark.md"><strong> Benchmark: 0 stale facts in top-5 vs mem0's 4/4 — and 100% supersession accuracy →</strong></a>
 </p>
 
 ---
@@ -51,7 +51,7 @@
 
 ---
 
-## 🔌 MCP — Native tool in any AI client
+## MCP — Native tool in any AI client
 
 Lians is listed on the [official MCP Registry](https://registry.modelcontextprotocol.io/servers/io.github.ebeirne/lians). Any MCP-compatible host — Claude Desktop, Cursor, VS Code, Windsurf, and others — can connect to your Lians server as a native tool with a one-time config. No SDK code, no custom adapter, no wrapper.
 
@@ -100,7 +100,7 @@ Set `LIANS_URL`, `LIANS_API_KEY`, and optionally `LIANS_AGENT_ID` in the environ
 
 ---
 
-## 🚀 Quickstart
+## Quickstart
 
 ```bash
 pip install lians-sdk[local]   # zero-setup local mode (SQLite, no Docker)
@@ -134,7 +134,7 @@ Switch to the hosted server with one line: `from lians import LiansClient as Loc
 
 ---
 
-## ⚖️ Why Lians
+## Why Lians
 
 Financial AI agents accumulate facts that **change over time**: rate decisions supersede prior ones, guidance gets revised, price targets change. Systems like mem0 return all versions with equal rank — your LLM gets contaminated context.
 
@@ -157,7 +157,7 @@ Superseded facts are excluded at the database layer. Every write is recorded in 
 
 ---
 
-## 🔧 Framework integrations
+## Framework integrations
 
 | Framework | Install | Import |
 |-----------|---------|--------|
@@ -170,7 +170,7 @@ Superseded facts are excluded at the database layer. Every write is recorded in 
 
 ---
 
-## 🖥️ Self-hosted quickstart
+## Self-hosted quickstart
 
 ```bash
 git clone https://github.com/ebeirne/Lians.git && cd Lians/agentmem
@@ -183,7 +183,7 @@ Deploy to Fly.io, Kubernetes, or bare Docker: [docs/deploy.md](docs/deploy.md)
 
 ---
 
-## 📚 SDK reference
+## SDK reference
 
 ```python
 # All three clients share the same API surface
@@ -202,7 +202,7 @@ client.erase(subject_id, request_ref)                    # GDPR crypto-shred
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
                     ┌──────────────┐
@@ -232,7 +232,7 @@ client.erase(subject_id, request_ref)                    # GDPR crypto-shred
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -249,7 +249,7 @@ Full reference: [agentmem/.env.example](agentmem/.env.example)
 
 ---
 
-## 🔌 Key endpoints
+## Key endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -266,7 +266,7 @@ Interactive docs: `http://localhost:8000/docs`
 
 ---
 
-## 🧪 Running tests
+## Running tests
 
 ```bash
 cd agentmem
@@ -281,7 +281,7 @@ See [docs/testing.md](docs/testing.md) for the six named invariants (temporal so
 
 ---
 
-## 🛡️ Compliance
+## Compliance
 
 | Requirement | Feature |
 |-------------|---------|

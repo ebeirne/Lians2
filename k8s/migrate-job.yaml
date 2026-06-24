@@ -2,15 +2,15 @@
 # or before upgrading to a new image version.
 #
 # Usage:
-#   # Update IMAGE below to match the target release tag, then:
-#   kubectl apply -f k8s/migrate-job.yaml
-#   kubectl wait --for=condition=complete job/agentmem-migrate -n agentmem --timeout=120s
-#   # If the job fails:
-#   kubectl logs -n agentmem -l job-name=agentmem-migrate
+# # Update IMAGE below to match the target release tag, then:
+# kubectl apply -f k8s/migrate-job.yaml
+# kubectl wait --for=condition=complete job/agentmem-migrate -n agentmem --timeout=120s
+# # If the job fails:
+# kubectl logs -n agentmem -l job-name=agentmem-migrate
 #
 # The job is idempotent — alembic upgrade head is safe to run multiple times.
 # Delete the job after confirming success:
-#   kubectl delete job agentmem-migrate -n agentmem
+# kubectl delete job agentmem-migrate -n agentmem
 apiVersion: batch/v1
 kind: Job
 metadata:

@@ -389,7 +389,7 @@ def _build_server() -> Any:
                         text=f"✓ CLEAN — {checked} memories checked, no lookahead bias detected.",
                     )]
                 lines = [
-                    f"⚠ CONTAMINATED — {len(flags)} flag(s) out of {checked} memories "
+                    f" CONTAMINATED — {len(flags)} flag(s) out of {checked} memories "
                     f"({rate:.1%} contamination rate):",
                 ]
                 for flag in flags:

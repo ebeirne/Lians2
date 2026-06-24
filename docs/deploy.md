@@ -84,7 +84,7 @@ VALUES ('<hash>', 'prod', ARRAY['read','write'], 'Initial admin key');
 ```bash
 # Default build includes sentence-transformers + pre-baked BAAI/bge-large-en-v1.5.
 # For Voyage/OpenAI providers (no local model needed), use a lean build:
-#   docker build --build-arg EXTRAS= --build-arg PREDOWNLOAD_MODEL= -t Lians .
+# docker build --build-arg EXTRAS= --build-arg PREDOWNLOAD_MODEL= -t Lians .
 docker compose up -d
 docker compose logs -f Lians
 ```

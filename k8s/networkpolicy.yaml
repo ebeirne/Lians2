@@ -3,8 +3,8 @@
 #
 # Ingress: only traffic from the ingress-nginx controller namespace is allowed.
 # Egress:  only Postgres (5432), Redis (6379), and external HTTPS (443) are
-#          allowed.  The HTTPS egress covers Voyage AI, Anthropic, Stripe, and
-#          any KMS endpoint.  DNS (53/UDP+TCP) is always permitted.
+# allowed.  The HTTPS egress covers Voyage AI, Anthropic, Stripe, and
+# any KMS endpoint.  DNS (53/UDP+TCP) is always permitted.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

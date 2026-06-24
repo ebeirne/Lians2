@@ -1,17 +1,17 @@
 # Kustomize entry point — apply the full stack with:
-#   kubectl apply -k k8s/
+# kubectl apply -k k8s/
 #
 # Deployment order matters:
-#   1. kubectl apply -f k8s/namespace.yaml
-#   2. kubectl apply -f k8s/secret.yaml        # fill in values first
-#   3. kubectl apply -f k8s/configmap.yaml
-#   4. kubectl apply -f k8s/migrate-job.yaml   # run migrations
-#   5. kubectl wait --for=condition=complete job/agentmem-migrate -n agentmem --timeout=120s
-#   6. kubectl apply -k k8s/               # deploy everything else
+# 1. kubectl apply -f k8s/namespace.yaml
+# 2. kubectl apply -f k8s/secret.yaml        # fill in values first
+# 3. kubectl apply -f k8s/configmap.yaml
+# 4. kubectl apply -f k8s/migrate-job.yaml   # run migrations
+# 5. kubectl wait --for=condition=complete job/agentmem-migrate -n agentmem --timeout=120s
+# 6. kubectl apply -k k8s/               # deploy everything else
 #
 # To update only the image tag:
-#   kustomize edit set image agentmem=ghcr.io/your-org/agentmem:v0.3.0
-#   kubectl apply -k k8s/
+# kustomize edit set image agentmem=ghcr.io/your-org/agentmem:v0.3.0
+# kubectl apply -k k8s/
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -31,7 +31,7 @@ resources:
   # each deployment to avoid applying the job on every `kubectl apply -k`.
 
 # Image — override tag at deploy time:
-#   kustomize edit set image agentmem=ghcr.io/your-org/agentmem:v0.2.0
+# kustomize edit set image agentmem=ghcr.io/your-org/agentmem:v0.2.0
 images:
   - name: agentmem
     newName: agentmem      # CHANGE: ghcr.io/your-org/agentmem
