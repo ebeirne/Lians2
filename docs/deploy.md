@@ -1,4 +1,4 @@
-﻿# Lian — Production Deploy Checklist
+﻿# Lians — Production Deploy Checklist
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@
 Copy `.env.example` to `.env` and fill every value:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/Lian
+DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/Lians
 ENCRYPTION_MASTER_KEY=<32-byte hex, generate with: python -c "import secrets; print(secrets.token_hex(32))">
 ADMIN_SECRET=<long random string — never expose in client traffic>
 ANTHROPIC_API_KEY=<required when SUPERSESSION_LLM_STAGE=true>
@@ -84,9 +84,9 @@ VALUES ('<hash>', 'prod', ARRAY['read','write'], 'Initial admin key');
 ```bash
 # Default build includes sentence-transformers + pre-baked BAAI/bge-large-en-v1.5.
 # For Voyage/OpenAI providers (no local model needed), use a lean build:
-#   docker build --build-arg EXTRAS= --build-arg PREDOWNLOAD_MODEL= -t Lian .
+#   docker build --build-arg EXTRAS= --build-arg PREDOWNLOAD_MODEL= -t Lians .
 docker compose up -d
-docker compose logs -f Lian
+docker compose logs -f Lians
 ```
 
 Health check: `curl http://localhost:8000/health`
@@ -102,7 +102,7 @@ fly secrets set ENCRYPTION_MASTER_KEY=<value> ADMIN_SECRET=<value> ...
 
 ```bash
 kubectl apply -f k8s/
-kubectl rollout status deployment/Lian
+kubectl rollout status deployment/Lians
 ```
 
 See `k8s/` for `Deployment`, `Service`, `HorizontalPodAutoscaler`, and
@@ -112,10 +112,10 @@ See `k8s/` for `Deployment`, `Service`, `HorizontalPodAutoscaler`, and
 
 ## 5. Grafana dashboard
 
-Import `grafana/Lian-dashboard.json` into your Grafana instance:
+Import `grafana/Lians-dashboard.json` into your Grafana instance:
 
 1. **Grafana → Dashboards → Import → Upload JSON file**
-2. Select `grafana/Lian-dashboard.json`
+2. Select `grafana/Lians-dashboard.json`
 3. Choose your Prometheus datasource when prompted
 
 The dashboard requires `prometheus_client` to be installed on the server:
@@ -128,9 +128,9 @@ Prometheus scrape config:
 
 ```yaml
 scrape_configs:
-  - job_name: Lian
+  - job_name: Lians
     static_configs:
-      - targets: ["Lian:8000"]
+      - targets: ["Lians:8000"]
     metrics_path: /metrics
     scrape_interval: 15s
 ```

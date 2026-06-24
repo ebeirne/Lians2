@@ -14,9 +14,9 @@ from unittest.mock import AsyncMock, MagicMock
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import StaticPool
 
-from src.lian.db import Base
-from src.lian.config import get_settings, Settings
-import src.lian.kms as _kms
+from src.lians.db import Base
+from src.lians.config import get_settings, Settings
+import src.lians.kms as _kms
 
 _COMPOSE_DIR = Path(__file__).parent.parent
 _DB_URL = "postgresql+asyncpg://agentmem:agentmem@localhost:5432/agentmem"
@@ -108,7 +108,7 @@ async def db():
     )
 
     # Drop PG-only indexes before table creation so SQLite doesn't choke
-    from src.lian.models import Base as AppBase
+    from src.lians.models import Base as AppBase
     import sqlalchemy as sa
     pg_indexes = [
         idx for table in AppBase.metadata.tables.values()

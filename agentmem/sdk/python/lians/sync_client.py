@@ -1,15 +1,15 @@
 """
-LianClient — synchronous wrapper around AsyncLianClient.
+LiansClient — synchronous wrapper around AsyncLiansClient.
 
 For scripts, CLIs, and any non-async context.  In async code (FastAPI
-handlers, Jupyter with a running loop) use AsyncLianClient directly.
+handlers, Jupyter with a running loop) use AsyncLiansClient directly.
 
 Usage::
 
-    from lian import LianClient
+    from lians import LiansClient
     from datetime import datetime, timezone
 
-    with LianClient(base_url="http://localhost:8000", api_key="...") as client:
+    with LiansClient(base_url="http://localhost:8000", api_key="...") as client:
         client.add(
             agent_id="my-agent",
             content="NVDA guidance $36B",
@@ -26,11 +26,11 @@ import asyncio
 from datetime import datetime
 from typing import Any, Optional
 
-from .client import AsyncLianClient
+from .client import AsyncLiansClient
 
 
-class LianClient:
-    """Synchronous HTTP client for the Lian REST API."""
+class LiansClient:
+    """Synchronous HTTP client for the Lians REST API."""
 
     def __init__(
         self,
@@ -39,7 +39,7 @@ class LianClient:
         admin_secret: str = "",
         timeout: float = 30.0,
     ):
-        self._async = AsyncLianClient(
+        self._async = AsyncLiansClient(
             base_url=base_url,
             api_key=api_key,
             admin_secret=admin_secret,
@@ -49,7 +49,7 @@ class LianClient:
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    def __enter__(self) -> "LianClient":
+    def __enter__(self) -> "LiansClient":
         return self
 
     def __exit__(self, *_: Any) -> None:

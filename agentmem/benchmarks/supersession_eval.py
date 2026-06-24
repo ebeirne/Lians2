@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.lian.supersession import classify_relation
+from src.lians.supersession import classify_relation
 
 # (old_content, new_content, old_t, new_t, old_meta, new_meta, expected_relation)
 CASES = [

@@ -1,18 +1,18 @@
 ﻿"""
-CrewAI integration for Lian.
+CrewAI integration for Lians.
 
 Provides BaseTool subclasses compatible with crewai >= 0.28.
 
 Install::
 
-    pip install lian[crewai]
+    pip install lians[crewai]
 
 Usage::
 
-    from lian import LocalLianClient
-    from lian.crewai_integration import build_crewai_tools
+    from lians import LocalLiansClient
+    from lians.crewai_integration import build_crewai_tools
 
-    client = LocalLianClient()
+    client = LocalLiansClient()
     tools = build_crewai_tools(client, agent_id="research-agent")
 
     from crewai import Agent, Task, Crew
@@ -32,7 +32,7 @@ Three tools are returned:
 The ``recall_facts_at`` tool queries memories as they were at a specific past date.
 mem0 has no bitemporal model. Graphiti/Zep has temporal graph queries but no
 compliance audit stack (hash chain, crypto-shred, information barriers), so
-CrewAI agents backed by Lian get both point-in-time accuracy and SEC/FINRA-grade auditability.
+CrewAI agents backed by Lians get both point-in-time accuracy and SEC/FINRA-grade auditability.
 """
 from __future__ import annotations
 
@@ -55,8 +55,8 @@ def build_crewai_tools(client: Any, agent_id: str) -> list:
     Parameters
     ----------
     client:
-        Any synchronous Lian client — ``LocalLianClient`` or
-        ``LianClient``.  (CrewAI runs tools synchronously.)
+        Any synchronous Lians client — ``LocalLiansClient`` or
+        ``LiansClient``.  (CrewAI runs tools synchronously.)
     agent_id:
         The agent namespace to read/write memories under.
 
@@ -69,12 +69,12 @@ def build_crewai_tools(client: Any, agent_id: str) -> list:
     ------
     ImportError
         If ``crewai`` is not installed.  Install with
-        ``pip install lian[crewai]``.
+        ``pip install lians[crewai]``.
     """
     if not _CREWAI_AVAILABLE:
         raise ImportError(
             "crewai is required for CrewAI integration.\n"
-            "Install with: pip install lian[crewai]"
+            "Install with: pip install lians[crewai]"
         )
 
     # ── Shared helpers ────────────────────────────────────────────────────────
@@ -119,7 +119,7 @@ def build_crewai_tools(client: Any, agent_id: str) -> list:
     class RememberFact(BaseTool):
         name: str = "remember_fact"
         description: str = (
-            "Store a financial fact, observation, or decision in Lian persistent memory. "
+            "Store a financial fact, observation, or decision in Lians persistent memory. "
             "Always use the event_time_iso for when the event *occurred*, not when you are "
             "recording it.  Add ticker/metric metadata when relevant — it enables precision "
             "recall later without semantic search ambiguity."
@@ -161,7 +161,7 @@ def build_crewai_tools(client: Any, agent_id: str) -> list:
     class RecallFacts(BaseTool):
         name: str = "recall_facts"
         description: str = (
-            "Retrieve the most relevant *current* financial facts from Lian. "
+            "Retrieve the most relevant *current* financial facts from Lians. "
             "Superseded facts are automatically excluded — only the latest valid value "
             "is returned.  Use this before answering any question that may rely on stored "
             "financial data to avoid hallucinating stale figures."

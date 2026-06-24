@@ -1,29 +1,29 @@
 <p align="center">
-  <a href="https://github.com/ebeirne/Lian">
-    <img src="docs/images/banner.png" width="800px" alt="Lian — Financial-Grade Agent Memory">
+  <a href="https://github.com/ebeirne/Lians">
+    <img src="docs/images/banner.png" width="800px" alt="Lians — Financial-Grade Agent Memory">
   </a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/ebeirne/Lian">Learn more</a>
+  <a href="https://github.com/ebeirne/Lians">Learn more</a>
   ·
-  <a href="https://github.com/ebeirne/Lian/tree/main/docs">Docs</a>
+  <a href="https://github.com/ebeirne/Lians/tree/main/docs">Docs</a>
   ·
-  <a href="https://github.com/ebeirne/Lian#self-hosted-quickstart">Quickstart</a>
+  <a href="https://github.com/ebeirne/Lians#self-hosted-quickstart">Quickstart</a>
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/lian-sdk">
-    <img src="https://img.shields.io/pypi/v/lian-sdk?color=%2334D058&label=pypi%20package" alt="PyPI version">
+  <a href="https://pypi.org/project/lians-sdk">
+    <img src="https://img.shields.io/pypi/v/lians-sdk?color=%2334D058&label=pypi%20package" alt="PyPI version">
   </a>
-  <a href="https://pypi.org/project/lian-sdk">
-    <img src="https://img.shields.io/pypi/dm/lian-sdk" alt="PyPI downloads">
+  <a href="https://pypi.org/project/lians-sdk">
+    <img src="https://img.shields.io/pypi/dm/lians-sdk" alt="PyPI downloads">
   </a>
-  <a href="https://github.com/ebeirne/Lian">
-    <img src="https://img.shields.io/github/commit-activity/m/ebeirne/Lian?style=flat-square" alt="GitHub commit activity">
+  <a href="https://github.com/ebeirne/Lians">
+    <img src="https://img.shields.io/github/commit-activity/m/ebeirne/Lians?style=flat-square" alt="GitHub commit activity">
   </a>
-  <a href="https://www.npmjs.com/package/lian">
-    <img src="https://img.shields.io/npm/v/lian" alt="npm version">
+  <a href="https://www.npmjs.com/package/lians">
+    <img src="https://img.shields.io/npm/v/lians" alt="npm version">
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0">
@@ -36,12 +36,12 @@
 
 ---
 
-[Lian](https://github.com/ebeirne/Lian) is a **financial-grade memory layer** for AI agents — built for regulated environments where stale facts contaminate decisions, auditors demand point-in-time reconstruction, and data-subject erasure must be cryptographically provable.
+[Lians](https://github.com/ebeirne/Lians) is a **financial-grade memory layer** for AI agents — built for regulated environments where stale facts contaminate decisions, auditors demand point-in-time reconstruction, and data-subject erasure must be cryptographically provable.
 
 | | Library | Self-Hosted Server | Cloud |
 |---|---|---|---|
 | **Best for** | Testing, prototyping | Teams, compliance deployments | Zero-ops production |
-| **Setup** | `pip install lian-sdk[local]` | `docker compose up --build` | `pip install lian-sdk` + API key |
+| **Setup** | `pip install lians-sdk[local]` | `docker compose up --build` | `pip install lians-sdk` + API key |
 | **Database** | SQLite (zero setup) | Postgres 16 + pgvector | Managed |
 | **Audit chain** | ✓ | ✓ | ✓ |
 | **GDPR erasure** | ✓ | ✓ | ✓ |
@@ -51,14 +51,14 @@
 ## 🚀 Quickstart
 
 ```bash
-pip install lian-sdk[local]   # zero-setup local mode (SQLite, no Docker)
+pip install lians-sdk[local]   # zero-setup local mode (SQLite, no Docker)
 ```
 
 ```python
-from lian import LocalLianClient
+from lians import LocalLiansClient
 from datetime import datetime, timezone
 
-mem = LocalLianClient()
+mem = LocalLiansClient()
 
 mem.add(
     agent_id="analyst-1",
@@ -78,21 +78,21 @@ results = mem.recall_at(
 )
 ```
 
-Switch to the hosted server with one line: `from lian import LianClient as LocalLianClient`
+Switch to the hosted server with one line: `from lians import LiansClient as LocalLiansClient`
 
 ---
 
-## ⚖️ Why Lian
+## ⚖️ Why Lians
 
 Financial AI agents accumulate facts that **change over time**: rate decisions supersede prior ones, guidance gets revised, price targets change. Systems like mem0 return all versions with equal rank — your LLM gets contaminated context.
 
-Lian fixes this with a bitemporal model:
+Lians fixes this with a bitemporal model:
 - **event_time** — when the fact happened (business time)
 - **valid_from / valid_to** — when it was known (system time)
 
 Superseded facts are excluded at the database layer. Every write is recorded in a tamper-evident SHA-256 hash chain (SEC 17a-4). Per-subject keys can be destroyed for GDPR erasure while the audit trail survives. Information barriers are enforced at PostgreSQL RLS, not the application layer.
 
-| | Lian | mem0 | Graphiti/Zep |
+| | Lians | mem0 | Graphiti/Zep |
 |---|---|---|---|
 | Stale facts in top-5 (5-revision chain) | **0 / 4** | 4 / 4 | N/T |
 | Supersession accuracy (22-pair benchmark) | **100%** | N/A | No benchmark |
@@ -109,19 +109,19 @@ Superseded facts are excluded at the database layer. Every write is recorded in 
 
 | Framework | Install | Import |
 |-----------|---------|--------|
-| **LangChain** | `pip install lian-sdk[langchain]` | `from lian.langchain_integration import LianChatHistory, build_tools` |
-| **LangGraph** | `pip install lian-sdk[langgraph]` | `from lian.langgraph_integration import create_recall_node, create_remember_node` |
-| **CrewAI** | `pip install lian-sdk[crewai]` | `from lian.crewai_integration import build_crewai_tools` |
-| **OpenAI Agents SDK** | `pip install lian-sdk[openai-agents]` | `from lian.openai_agents_integration import build_openai_agent_tools` |
-| **AutoGen v0.4** | `pip install lian-sdk[autogen]` | `from lian.autogen_integration import build_autogen_tools` |
-| **TypeScript / Node** | `npm install lian` | `import { LianClient } from "lian"` |
+| **LangChain** | `pip install lians-sdk[langchain]` | `from lians.langchain_integration import LiansChatHistory, build_tools` |
+| **LangGraph** | `pip install lians-sdk[langgraph]` | `from lians.langgraph_integration import create_recall_node, create_remember_node` |
+| **CrewAI** | `pip install lians-sdk[crewai]` | `from lians.crewai_integration import build_crewai_tools` |
+| **OpenAI Agents SDK** | `pip install lians-sdk[openai-agents]` | `from lians.openai_agents_integration import build_openai_agent_tools` |
+| **AutoGen v0.4** | `pip install lians-sdk[autogen]` | `from lians.autogen_integration import build_autogen_tools` |
+| **TypeScript / Node** | `npm install lians` | `import { LiansClient } from "lians"` |
 
 ---
 
 ## 🖥️ Self-hosted quickstart
 
 ```bash
-git clone https://github.com/ebeirne/Lian.git && cd Lian/agentmem
+git clone https://github.com/ebeirne/Lians.git && cd Lians/agentmem
 cp .env.demo .env
 docker compose up --build -d
 python scripts/seed_demo.py   # prints a demo API key; open demo/index.html
@@ -135,9 +135,9 @@ Deploy to Fly.io, Kubernetes, or bare Docker: [docs/deploy.md](docs/deploy.md)
 
 ```python
 # All three clients share the same API surface
-from lian import LianClient          # sync, connects to hosted/self-hosted server
-from lian import AsyncLianClient     # async, for FastAPI / async frameworks
-from lian import LocalLianClient     # local SQLite, no server needed
+from lians import LiansClient          # sync, connects to hosted/self-hosted server
+from lians import AsyncLiansClient     # async, for FastAPI / async frameworks
+from lians import LocalLiansClient     # local SQLite, no server needed
 
 client.add(agent_id, content, event_time, metadata={}, importance=0.5)
 client.add_from_messages(agent_id, messages=[{"role": "user", "content": "..."}])
@@ -158,7 +158,7 @@ client.erase(subject_id, request_ref)                    # GDPR crypto-shred
                     └──────┬───────┘
                            │  REST / MCP
                ┌───────────▼────────────┐
-               │        Lian API        │   FastAPI · rate-limit · OTEL
+               │        Lians API        │   FastAPI · rate-limit · OTEL
                └──┬────────────────┬────┘
           ┌───────▼──────┐  ┌──────▼───────┐
           │   memories    │  │  event_log   │
@@ -247,3 +247,5 @@ Full documentation: [docs/compliance.md](docs/compliance.md) · [docs/hipaa.md](
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE).
+
+<!-- mcp-name: io.github.ebeirne/lians -->

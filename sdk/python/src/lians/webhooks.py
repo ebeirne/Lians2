@@ -6,7 +6,7 @@ The signature is in the ``X-AgentMem-Signature`` header as ``sha256=<hex>``.
 
 Usage::
 
-    from lian.webhooks import verify_webhook_signature, parse_webhook_payload
+    from lians.webhooks import verify_webhook_signature, parse_webhook_payload
 
     @app.post("/webhook")
     async def handle(request: Request):

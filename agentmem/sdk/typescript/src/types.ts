@@ -1,5 +1,5 @@
 ﻿// AgentMem TypeScript SDK — type definitions
-// Mirrors the Pydantic schemas in src/lian/schemas.py
+// Mirrors the Pydantic schemas in src/lians/schemas.py
 
 // ── Write ────────────────────────────────────────────────────────────────────
 
@@ -389,7 +389,7 @@ export interface ErasureCertificate {
 
 // ── Client options ───────────────────────────────────────────────────────────
 
-export interface LianClientOptions {
+export interface LiansClientOptions {
   /** Base URL of the AgentMem server, e.g. https://agentmem.example.com */
   baseUrl: string;
   /** API key (X-API-Key header) */

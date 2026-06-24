@@ -12,9 +12,9 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 
-from src.lian.main import app
-from src.lian.db import get_db
-from src.lian.models import ApiKey, NamespacePolicy
+from src.lians.main import app
+from src.lians.db import get_db
+from src.lians.models import ApiKey, NamespacePolicy
 
 TEST_NS = "compliance-test-ns"
 TEST_KEY = "compliance-test-key-xyz"
@@ -124,8 +124,8 @@ async def test_report_conflict_counts(client):
 
 @pytest.mark.asyncio
 async def test_report_erasure_section(client, db):
-    from src.lian.schemas import MemoryAdd
-    from src.lian.memory_service import add_memory, erase_subject
+    from src.lians.schemas import MemoryAdd
+    from src.lians.memory_service import add_memory, erase_subject
 
     await add_memory(db, TEST_NS, MemoryAdd(
         agent_id="agent-1",

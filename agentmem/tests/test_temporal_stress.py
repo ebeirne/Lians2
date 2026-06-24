@@ -22,8 +22,8 @@ from __future__ import annotations
 import pytest
 from datetime import datetime, timedelta, timezone
 
-from src.lian.schemas import MemoryAdd, RecallRequest
-from src.lian.memory_service import add_memory, recall_memories
+from src.lians.schemas import MemoryAdd, RecallRequest
+from src.lians.memory_service import add_memory, recall_memories
 
 NS    = "stress-ns"
 AGENT = "stress-agent"
@@ -272,7 +272,7 @@ class TestOutOfOrderIngestion:
         ))
 
         # The older ingested fact must not have closed the newer one
-        from src.lian.models import Memory as MemModel
+        from src.lians.models import Memory as MemModel
         from sqlalchemy import select
         db_new = await db.get(MemModel, m_new.id)
         assert db_new.valid_to is None, (

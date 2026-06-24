@@ -5,7 +5,7 @@ These must all pass before Phase 2 LLM adjudication is added.
 import pytest
 from datetime import datetime, timezone, timedelta
 
-from src.lian.supersession import classify_relation, _metadata_overlap
+from src.lians.supersession import classify_relation, _metadata_overlap
 
 
 T0 = datetime(2026, 5, 1, tzinfo=timezone.utc)
@@ -137,13 +137,13 @@ class TestClassifyRelation:
 
     def test_no_metadata_produces_no_overlap(self):
         """Without structured keys, _metadata_overlap returns empty â€” no supersession candidate."""
-        from src.lian.supersession import _metadata_overlap
+        from src.lians.supersession import _metadata_overlap
         overlap = _metadata_overlap({}, {"note": "free text memory"})
         assert overlap == set()
 
     def test_cusip_isin_keys_recognized(self):
         """CUSIP and ISIN are recognized structured keys."""
-        from src.lian.supersession import _metadata_overlap
+        from src.lians.supersession import _metadata_overlap
         meta_a = {"cusip": "037833100", "metric": "price"}
         meta_b = {"cusip": "037833100", "metric": "price"}
         overlap = _metadata_overlap(meta_a, meta_b)

@@ -1,18 +1,18 @@
 ﻿"""
-lian — Python client for Lian, the financial-grade AI memory layer.
+lians — Python client for Lians, the financial-grade AI memory layer.
 
 Install::
 
-    pip install lian
+    pip install lians
 
 Quick start::
 
     import asyncio
     import os
-    from lian import LianClient
+    from lians import LiansClient
 
     async def main():
-        async with LianClient(
+        async with LiansClient(
             base_url=os.environ["AGENTMEM_URL"],
             api_key=os.environ["AGENTMEM_API_KEY"],
         ) as client:
@@ -43,7 +43,7 @@ Quick start::
 
     asyncio.run(main())
 """
-from .client import LianClient, LianError
+from .client import LiansClient, LiansError
 from .webhooks import verify_webhook_signature, parse_webhook_payload
 from .types import (
     MemoryOut,
@@ -69,8 +69,8 @@ from .types import (
 
 __version__ = "0.1.0"
 __all__ = [
-    "LianClient",
-    "LianError",
+    "LiansClient",
+    "LiansError",
     "verify_webhook_signature",
     "parse_webhook_payload",
     # Types

@@ -5,14 +5,14 @@
  *   npm install @langchain/core
  *
  * @example
- * import { LianClient } from "lian";
- * import { createRecallTool, createRememberTool } from "lian/langchain";
+ * import { LiansClient } from "lians";
+ * import { createRecallTool, createRememberTool } from "lians/langchain";
  *
- * const client = new LianClient({ baseUrl: "...", apiKey: "..." });
+ * const client = new LiansClient({ baseUrl: "...", apiKey: "..." });
  * const tools  = [createRecallTool(client, "equity-desk"), createRememberTool(client, "equity-desk")];
  */
 
-import type { LianClient } from "./client.js";
+import type { LiansClient } from "./client.js";
 
 type DynamicTool = { name: string; description: string; func: (input: string) => Promise<string> };
 
@@ -23,7 +23,7 @@ async function getDynamicTool(): Promise<new (fields: DynamicTool) => DynamicToo
     return (mod as any).DynamicTool;
   } catch {
     throw new Error(
-      "lian: @langchain/core is not installed. " +
+      "lians: @langchain/core is not installed. " +
       "Run `npm install @langchain/core` to use LangChain integration.",
     );
   }
@@ -34,7 +34,7 @@ async function getDynamicTool(): Promise<new (fields: DynamicTool) => DynamicToo
  * The tool accepts a plain-text query string and returns formatted results.
  */
 export async function createRecallTool(
-  client: LianClient,
+  client: LiansClient,
   agentId: string,
   opts: { k?: number } = {},
 ): Promise<DynamicTool> {
@@ -59,7 +59,7 @@ export async function createRecallTool(
  * The tool accepts a plain-text string describing the fact to remember.
  */
 export async function createRememberTool(
-  client: LianClient,
+  client: LiansClient,
   agentId: string,
 ): Promise<DynamicTool> {
   const DynamicTool = await getDynamicTool();

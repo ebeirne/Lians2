@@ -21,9 +21,9 @@ from uuid import uuid4
 
 from httpx import AsyncClient, ASGITransport
 
-from src.lian.main import app
-from src.lian.db import get_db
-from src.lian.models import ApiKey
+from src.lians.main import app
+from src.lians.db import get_db
+from src.lians.models import ApiKey
 
 T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 T1 = datetime(2026, 4, 1, tzinfo=timezone.utc)

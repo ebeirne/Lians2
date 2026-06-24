@@ -25,9 +25,9 @@ from datetime import datetime, timezone
 from httpx import AsyncClient, ASGITransport
 from uuid import uuid4
 
-from src.lian.main import app
-from src.lian.db import get_db
-from src.lian.models import ApiKey
+from src.lians.main import app
+from src.lians.db import get_db
+from src.lians.models import ApiKey
 
 # Same event_time â†’ CONTRADICTS_SAME_TIME; different event_time â†’ SUPERSEDES
 T_SAME = datetime(2026, 3, 15, 12, 0, 0, tzinfo=timezone.utc)

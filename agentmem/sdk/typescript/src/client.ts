@@ -16,7 +16,7 @@
  *    that can be verified at any time with verifyChain().
  *
  * @example
- * const client = new LianClient({
+ * const client = new LiansClient({
  *   baseUrl: "https://mem.yourfirm.internal",
  *   apiKey:  process.env.AGENTMEM_API_KEY!,
  *   adminSecret: process.env.AGENTMEM_ADMIN_SECRET,
@@ -25,7 +25,7 @@
  */
 
 import type {
-  LianClientOptions,
+  LiansClientOptions,
   MemoryAdd,
   MemoryOut,
   MemoryBatchResult,
@@ -53,15 +53,15 @@ import type {
 
 // ── Error class ───────────────────────────────────────────────────────────────
 
-/** Thrown by LianClient when the server returns a non-2xx response. */
-export class LianError extends Error {
+/** Thrown by LiansClient when the server returns a non-2xx response. */
+export class LiansError extends Error {
   constructor(
     public readonly status: number,
     public readonly body: string,
     message: string,
   ) {
     super(message);
-    this.name = "LianError";
+    this.name = "LiansError";
   }
 }
 
@@ -75,13 +75,13 @@ interface ReqOpts {
 
 // ── Client ────────────────────────────────────────────────────────────────────
 
-export class LianClient {
+export class LiansClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly adminSecret: string | undefined;
   private readonly timeoutMs: number;
 
-  constructor(options: LianClientOptions) {
+  constructor(options: LiansClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     this.apiKey = options.apiKey;
     this.adminSecret = options.adminSecret;
@@ -135,7 +135,7 @@ export class LianClient {
 
     if (!res.ok) {
       const body = await res.text().catch(() => res.statusText);
-      throw new LianError(
+      throw new LiansError(
         res.status,
         body,
         `AgentMem ${method} ${path} → ${res.status}: ${body}`,
@@ -275,7 +275,7 @@ export class LianClient {
   /**
    * Register a webhook endpoint.
    * The returned `secret` is shown exactly once — store it to verify signatures.
-   * Every delivery is HMAC-SHA256-signed: `X-Lian-Signature: sha256=<hex>`
+   * Every delivery is HMAC-SHA256-signed: `X-Lians-Signature: sha256=<hex>`
    */
   registerWebhook(req: WebhookRegisterRequest): Promise<WebhookRegisterResult> {
     return this._req<WebhookRegisterResult>("POST", "/v1/webhooks", { json: req });

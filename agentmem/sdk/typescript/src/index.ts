@@ -1,7 +1,7 @@
-﻿export { LianClient, LianError } from "./client.js";
+﻿export { LiansClient, LiansError } from "./client.js";
 export { verifyWebhookSignature, parseWebhookPayload } from "./webhooks.js";
 export type {
-  LianClientOptions,
+  LiansClientOptions,
   MemoryAdd,
   MemoryOut,
   MemoryBatchResult,

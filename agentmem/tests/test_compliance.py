@@ -28,10 +28,10 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from src.lian.schemas import MemoryAdd, RecallRequest
-from src.lian.memory_service import add_memory, recall_memories, erase_subject
-from src.lian.audit import reconstruct as audit_reconstruct
-from src.lian.schemas import AuditReconstructRequest
+from src.lians.schemas import MemoryAdd, RecallRequest
+from src.lians.memory_service import add_memory, recall_memories, erase_subject
+from src.lians.audit import reconstruct as audit_reconstruct
+from src.lians.schemas import AuditReconstructRequest
 
 NS    = "compliance-ns"
 AGENT = "compliance-agent"
@@ -217,7 +217,7 @@ class TestCryptoShred:
         The hash serves as proof-of-existence for regulators without exposing PII.
         SEC Rule 17a-4 requires the audit trail to be immutable.
         """
-        from src.lian.models import Memory as MemModel
+        from src.lians.models import Memory as MemModel
         from sqlalchemy import select
 
         subject_id = f"subject-hash-{uuid4().hex[:8]}"
@@ -283,7 +283,7 @@ class TestCryptoShred:
         ref = f"gdpr-req-{uuid4().hex}"
         await erase_subject(db, NS, subject_id, request_ref=ref)
 
-        from src.lian.models import EventLog
+        from src.lians.models import EventLog
         from sqlalchemy import select
         stmt = select(EventLog).where(EventLog.op == "erase")
         result_rows = await db.execute(stmt)
@@ -369,7 +369,7 @@ class TestAuditReconstructAccuracy:
         The memory row persists in the DB with content_hash intact (proof-of-
         existence) and erased_at set â€” verifiable without re-exposing PII.
         """
-        from src.lian.models import Memory as MemModel
+        from src.lians.models import Memory as MemModel
 
         agent = f"{AGENT}-tombstone"
         subject_id = f"subj-{uuid4().hex[:8]}"
@@ -426,7 +426,7 @@ class TestDuplicateDetection:
         ))
 
         # m1 must remain valid â€” CONFIRMS should not close it
-        from src.lian.models import Memory as MemModel
+        from src.lians.models import Memory as MemModel
         db_m1 = await db.get(MemModel, m1.id)
         assert db_m1.valid_to is None, (
             "Exact duplicate (CONFIRMS relation) must not close the original memory"
@@ -449,7 +449,7 @@ class TestDuplicateDetection:
             event_time=T2, metadata=meta,
         ))
 
-        from src.lian.models import Memory as MemModel
+        from src.lians.models import Memory as MemModel
         db_old = await db.get(MemModel, m_old.id)
         assert db_old.valid_to is not None, (
             "Updated value (SUPERSEDES) must close the old memory"

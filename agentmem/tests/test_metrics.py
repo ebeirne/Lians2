@@ -29,9 +29,9 @@ from prometheus_client import CollectorRegistry
 
 from httpx import AsyncClient, ASGITransport
 
-from src.lian.main import app
-from src.lian.db import get_db
-from src.lian.models import ApiKey
+from src.lians.main import app
+from src.lians.db import get_db
+from src.lians.models import ApiKey
 
 T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 T1 = datetime(2026, 5, 10, tzinfo=timezone.utc)
@@ -50,7 +50,7 @@ def reset_metrics():
     Replace the module-level Prometheus registry with a fresh one before each
     test so counter values don't accumulate across the suite.
     """
-    import src.lian.metrics as _m
+    import src.lians.metrics as _m
     from prometheus_client import Counter, Gauge, Histogram
 
     # Swap in a clean registry
@@ -173,7 +173,7 @@ async def test_metrics_body_contains_metric_names(client):
 @pytest.mark.asyncio
 async def test_metrics_endpoint_disabled_returns_404(client, monkeypatch):
     monkeypatch.setenv("METRICS_ENABLED", "false")
-    from src.lian.config import get_settings
+    from src.lians.config import get_settings
     get_settings.cache_clear()
     try:
         resp = await client.get("/metrics")
@@ -186,7 +186,7 @@ async def test_metrics_endpoint_disabled_returns_404(client, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_write_increments_counter(client):
-    import src.lian.metrics as _m
+    import src.lians.metrics as _m
 
     before = _counter_value(_m._writes, namespace=TEST_NS)
     await client.post("/v1/memories", headers=_h(), json=_mem("NVDA guidance $36B"))
@@ -197,7 +197,7 @@ async def test_write_increments_counter(client):
 
 @pytest.mark.asyncio
 async def test_write_counter_includes_relation_label(client):
-    import src.lian.metrics as _m
+    import src.lians.metrics as _m
 
     await client.post("/v1/memories", headers=_h(), json=_mem("AAPL EPS $1.50", T0))
     await client.post("/v1/memories", headers=_h(), json={
@@ -211,7 +211,7 @@ async def test_write_counter_includes_relation_label(client):
 
 @pytest.mark.asyncio
 async def test_batch_write_increments_counter_per_item(client):
-    import src.lian.metrics as _m
+    import src.lians.metrics as _m
 
     before = _counter_value(_m._writes, namespace=TEST_NS)
     await client.post("/v1/memories/batch", headers=_h(), json={
@@ -228,7 +228,7 @@ async def test_batch_write_increments_counter_per_item(client):
 
 @pytest.mark.asyncio
 async def test_recall_increments_counter(client):
-    import src.lian.metrics as _m
+    import src.lians.metrics as _m
 
     await client.post("/v1/memories", headers=_h(), json=_mem("NVDA guidance $36B"))
     before = _counter_value(_m._recalls, namespace=TEST_NS)
@@ -244,7 +244,7 @@ async def test_recall_increments_counter(client):
 
 @pytest.mark.asyncio
 async def test_recall_records_semantic_router(client):
-    import src.lian.metrics as _m
+    import src.lians.metrics as _m
 
     await client.post("/v1/memories", headers=_h(), json=_mem("FED rate 5.25%"))
     await client.post("/v1/recall", headers=_h(), json={
@@ -262,7 +262,7 @@ async def test_recall_records_semantic_router(client):
 
 @pytest.mark.asyncio
 async def test_add_histogram_is_populated(client):
-    import src.lian.metrics as _m
+    import src.lians.metrics as _m
 
     await client.post("/v1/memories", headers=_h(), json=_mem("JPM EPS $4.20"))
     count = _hist_count(_m._add_hist, namespace=TEST_NS)
@@ -273,7 +273,7 @@ async def test_add_histogram_is_populated(client):
 
 @pytest.mark.asyncio
 async def test_recall_histogram_is_populated(client):
-    import src.lian.metrics as _m
+    import src.lians.metrics as _m
 
     await client.post("/v1/memories", headers=_h(), json=_mem("GS revenue $12B"))
     await client.post("/v1/recall", headers=_h(), json={
@@ -287,7 +287,7 @@ async def test_recall_histogram_is_populated(client):
 
 @pytest.mark.asyncio
 async def test_erase_increments_erasure_request_counter(client):
-    import src.lian.metrics as _m
+    import src.lians.metrics as _m
 
     await client.post("/v1/memories", headers=_h(), json={
         **_mem("Client Alice portfolio $1M"),
@@ -306,7 +306,7 @@ async def test_erase_increments_erasure_request_counter(client):
 
 @pytest.mark.asyncio
 async def test_erase_increments_memories_erased_counter(client):
-    import src.lian.metrics as _m
+    import src.lians.metrics as _m
 
     await client.post("/v1/memories", headers=_h(), json={
         **_mem("Client Bob portfolio $500k"),
@@ -325,7 +325,7 @@ async def test_erase_increments_memories_erased_counter(client):
 
 @pytest.mark.asyncio
 async def test_erase_with_no_memories_does_not_increment_erased(client):
-    import src.lian.metrics as _m
+    import src.lians.metrics as _m
 
     before = _counter_value(_m._erased, namespace=TEST_NS)
     # Erase a subject with no memories
@@ -342,7 +342,7 @@ async def test_erase_with_no_memories_does_not_increment_erased(client):
 
 def test_generate_metrics_without_prometheus():
     """record_* helpers and generate_metrics() must not raise without prometheus_client."""
-    import src.lian.metrics as _m
+    import src.lians.metrics as _m
     original = _m._PROM_AVAILABLE
     _m._PROM_AVAILABLE = False
     try:

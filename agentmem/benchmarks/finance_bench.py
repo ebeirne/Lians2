@@ -11,9 +11,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.lian.db import Base
-from src.lian.memory_service import add_memory, recall_memories
-from src.lian.schemas import MemoryAdd, RecallRequest
+from src.lians.db import Base
+from src.lians.memory_service import add_memory, recall_memories
+from src.lians.schemas import MemoryAdd, RecallRequest
 
 
 @dataclass(frozen=True)

@@ -22,10 +22,10 @@ from datetime import datetime, timezone
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import select, text
 
-from src.lian.main import app
-from src.lian.db import get_db
-from src.lian.models import ApiKey, EventLog
-from src.lian.audit_chain import (
+from src.lians.main import app
+from src.lians.db import get_db
+from src.lians.models import ApiKey, EventLog
+from src.lians.audit_chain import (
     chain_log,
     compute_row_hash,
     get_chain_tip,
@@ -326,7 +326,7 @@ class TestVerifyEndpoint:
 class TestAuditExport:
 
     async def test_export_returns_all_events_in_namespace(self, db):
-        from src.lian.audit_chain import export_audit_log
+        from src.lians.audit_chain import export_audit_log
         ns = "export-ns-1"
         await chain_log(db, ns, "a", "add",    content_hash="h1")
         await chain_log(db, ns, "a", "recall", content_hash="h2")
@@ -343,7 +343,7 @@ class TestAuditExport:
         assert set(ops) == {"add", "recall", "erase"}
 
     async def test_export_events_have_hash_chain_fields(self, db):
-        from src.lian.audit_chain import export_audit_log
+        from src.lians.audit_chain import export_audit_log
         ns = "export-ns-2"
         await chain_log(db, ns, "a", "add", content_hash="h1")
         await db.commit()
@@ -357,7 +357,7 @@ class TestAuditExport:
 
     async def test_export_filters_by_from_dt(self, db):
         import asyncio
-        from src.lian.audit_chain import export_audit_log
+        from src.lians.audit_chain import export_audit_log
         from datetime import timedelta
         ns = "export-ns-3"
         r1 = await chain_log(db, ns, "a", "add", content_hash="h1")
@@ -373,7 +373,7 @@ class TestAuditExport:
 
     async def test_export_filters_by_to_dt(self, db):
         import asyncio
-        from src.lian.audit_chain import export_audit_log
+        from src.lians.audit_chain import export_audit_log
         ns = "export-ns-4"
         r1 = await chain_log(db, ns, "a", "add", content_hash="h1")
         t1 = r1.created_at
@@ -386,14 +386,14 @@ class TestAuditExport:
         assert result["events"][0]["op"] == "add"
 
     async def test_export_empty_namespace_returns_zero_rows(self, db):
-        from src.lian.audit_chain import export_audit_log
+        from src.lians.audit_chain import export_audit_log
         result = await export_audit_log(db, namespace="export-empty")
         assert result["total_rows"] == 0
         assert result["events"] == []
         assert result["chain_status"] is None
 
     async def test_export_with_verify_includes_chain_status(self, db):
-        from src.lian.audit_chain import export_audit_log
+        from src.lians.audit_chain import export_audit_log
         ns = "export-ns-5"
         await chain_log(db, ns, "a", "add", content_hash="h1")
         await db.commit()
@@ -403,7 +403,7 @@ class TestAuditExport:
         assert result["chain_violations"] == []
 
     async def test_export_excludes_other_namespaces(self, db):
-        from src.lian.audit_chain import export_audit_log
+        from src.lians.audit_chain import export_audit_log
         await chain_log(db, "export-ns-6a", "a", "add", content_hash="h1")
         await chain_log(db, "export-ns-6b", "b", "add", content_hash="h2")
         await db.commit()

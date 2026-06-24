@@ -1,9 +1,9 @@
-name: Publish lian to npm
+name: Publish lians to npm
 
 on:
   push:
     tags:
-      - "lian-ts-v*"
+      - "lians-ts-v*"
 
 jobs:
   publish:

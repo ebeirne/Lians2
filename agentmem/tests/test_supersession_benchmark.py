@@ -26,7 +26,7 @@ from __future__ import annotations
 import pytest
 from datetime import datetime, timezone, timedelta
 
-from src.lian.supersession import classify_relation, _metadata_overlap
+from src.lians.supersession import classify_relation, _metadata_overlap
 
 # ---------------------------------------------------------------------------
 # Labeled dataset
@@ -344,7 +344,7 @@ class TestMetadataOverlapCoverage:
     """Unit tests for the _metadata_overlap helper used in Stage 1 candidate filtering."""
 
     def test_all_structured_keys_recognized(self):
-        from src.lian.supersession import _STRUCTURED_KEYS
+        from src.lians.supersession import _STRUCTURED_KEYS
         expected = {"ticker", "metric", "entity", "instrument", "cusip", "isin", "field"}
         assert _STRUCTURED_KEYS == expected, (
             f"Structured key set changed: {_STRUCTURED_KEYS} vs {expected}"

@@ -15,10 +15,10 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 
-from src.lian.main import app
-from src.lian.db import get_db
-from src.lian.models import ApiKey, WebhookEndpoint, WebhookDelivery
-from src.lian.webhook_service import (
+from src.lians.main import app
+from src.lians.db import get_db
+from src.lians.models import ApiKey, WebhookEndpoint, WebhookDelivery
+from src.lians.webhook_service import (
     register_webhook, list_webhooks, delete_webhook, update_webhook,
     dispatch_event, _sign, _http_post,
     MEMORY_SUPERSEDED, MEMORY_CONFLICT, MEMORY_ERASED, ALL_EVENTS,
@@ -161,7 +161,7 @@ async def test_dispatch_calls_http_for_matching_endpoint(db):
         captured.append((url, body, signature))
         return 200, ""
 
-    with patch("src.lian.webhook_service._http_post", side_effect=fake_http):
+    with patch("src.lians.webhook_service._http_post", side_effect=fake_http):
         # Flush so the endpoint is visible to the task
         await dispatch_event(db, TEST_NS, MEMORY_SUPERSEDED, {
             "superseded_memory_id": str(uuid.uuid4()),
@@ -200,7 +200,7 @@ async def test_dispatch_skips_disabled_endpoint(db):
         captured.append(url)
         return 200, ""
 
-    with patch("src.lian.webhook_service._http_post", side_effect=fake_http):
+    with patch("src.lians.webhook_service._http_post", side_effect=fake_http):
         await dispatch_event(db, TEST_NS, MEMORY_SUPERSEDED, {"dummy": True})
         import asyncio
         await asyncio.sleep(0.1)
@@ -220,7 +220,7 @@ async def test_dispatch_skips_non_matching_event(db):
         captured.append(url)
         return 200, ""
 
-    with patch("src.lian.webhook_service._http_post", side_effect=fake_http):
+    with patch("src.lians.webhook_service._http_post", side_effect=fake_http):
         await dispatch_event(db, TEST_NS, MEMORY_SUPERSEDED, {"dummy": True})
         import asyncio
         await asyncio.sleep(0.1)
@@ -240,7 +240,7 @@ async def test_dispatch_namespace_isolation(db):
         captured.append(url)
         return 200, ""
 
-    with patch("src.lian.webhook_service._http_post", side_effect=fake_http):
+    with patch("src.lians.webhook_service._http_post", side_effect=fake_http):
         await dispatch_event(db, TEST_NS, MEMORY_CONFLICT, {"dummy": True})
         import asyncio
         await asyncio.sleep(0.1)
@@ -363,7 +363,7 @@ async def test_supersession_dispatches_webhook(client, db):
         captured.append(json.loads(body))
         return 200, ""
 
-    with patch("src.lian.webhook_service._http_post", side_effect=fake_http):
+    with patch("src.lians.webhook_service._http_post", side_effect=fake_http):
         # Old memory
         await client.post("/v1/memories", json={
             "agent_id": "agent-wh",

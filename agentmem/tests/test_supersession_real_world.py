@@ -42,9 +42,9 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 
-from src.lian.main import app
-from src.lian.db import get_db
-from src.lian.models import ApiKey
+from src.lians.main import app
+from src.lians.db import get_db
+from src.lians.models import ApiKey
 
 TEST_NS = "real-world-bench-ns"
 TEST_KEY = "real-world-bench-key"

@@ -2,8 +2,8 @@
 Demo: research agent tracking earnings revisions with AgentMem.
 
 Shows two modes:
-  - Local mode  (LocalLianClient): zero setup, in-memory SQLite, no server
-  - HTTP mode   (LianClient):      sync client -> real Lian server
+  - Local mode  (LocalLiansClient): zero setup, in-memory SQLite, no server
+  - HTTP mode   (LiansClient):      sync client -> real Lians server
 
 Run local mode immediately::
 
@@ -12,7 +12,7 @@ Run local mode immediately::
 
 Run against a live server::
 
-    uvicorn src.lian.main:app --reload
+    uvicorn src.lians.main:app --reload
     python examples/research_agent_demo.py --mode http --api-key your-key
 """
 import sys
@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 # Allow running from any directory without installing the SDK
 _root = Path(__file__).resolve().parent.parent  # agentmem/
 sys.path.insert(0, str(_root / "sdk" / "python"))
-sys.path.insert(0, str(_root))  # makes src.lian importable in dev mode
+sys.path.insert(0, str(_root))  # makes src.lians importable in dev mode
 
 
 def run_demo(mem) -> None:
@@ -85,14 +85,14 @@ def main():
     args = parser.parse_args()
 
     if args.mode == "local":
-        from lian import LocalLianClient
+        from lians import LocalLiansClient
         print("=== Local mode (no server needed) ===\n")
-        with LocalLianClient() as mem:
+        with LocalLiansClient() as mem:
             run_demo(mem)
     else:
-        from lian import LianClient
+        from lians import LiansClient
         print(f"=== HTTP mode -> {args.base_url} ===\n")
-        with LianClient(base_url=args.base_url, api_key=args.api_key) as mem:
+        with LiansClient(base_url=args.base_url, api_key=args.api_key) as mem:
             run_demo(mem)
 
 

@@ -20,8 +20,8 @@ import pytest
 import pytest_asyncio
 from datetime import datetime, timedelta, timezone
 
-from src.lian.schemas import MemoryAdd, RecallRequest
-from src.lian.memory_service import add_memory, recall_memories
+from src.lians.schemas import MemoryAdd, RecallRequest
+from src.lians.memory_service import add_memory, recall_memories
 
 # ---------------------------------------------------------------------------
 # Metric helpers
@@ -59,8 +59,8 @@ async def _pure_cosine_ranking(db, namespace: str, agent_id: str, query: str) ->
     Returns list of (memory, cosine_score, content).
     """
     from sqlalchemy import select, and_
-    from src.lian.models import Memory
-    from src.lian.embeddings import get_embedding_provider
+    from src.lians.models import Memory
+    from src.lians.embeddings import get_embedding_provider
 
     provider = get_embedding_provider()
     q_emb = await provider.embed_one(query)
@@ -181,7 +181,7 @@ class TestHybridVsPureSemantic:
         ))
 
         # The new memory should have superseded the old one
-        from src.lian.models import Memory as MemModel
+        from src.lians.models import Memory as MemModel
         old_db = await db.execute(
             __import__("sqlalchemy", fromlist=["select"]).select(MemModel).where(
                 MemModel.agent_id == AGENT,

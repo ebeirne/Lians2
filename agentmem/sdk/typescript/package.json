@@ -1,7 +1,7 @@
 {
-  "name": "lian",
+  "name": "lians",
   "version": "0.2.0",
-  "description": "TypeScript/JavaScript SDK for Lian — financial-grade AI memory with compliance built in",
+  "description": "TypeScript/JavaScript SDK for Lians — financial-grade AI memory with compliance built in",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

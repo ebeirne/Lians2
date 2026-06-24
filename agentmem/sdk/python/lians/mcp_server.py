@@ -1,29 +1,29 @@
 """
-Lian MCP server — exposes Lian memory tools over Model Context Protocol (stdio transport).
+Lians MCP server — exposes Lians memory tools over Model Context Protocol (stdio transport).
 
 Any MCP-compatible host (Claude Desktop, Cursor, VS Code with MCP, custom LLM servers)
-can call Lian directly without a custom SDK adapter after one-time configuration.
+can call Lians directly without a custom SDK adapter after one-time configuration.
 
 Install:
-    pip install lian-sdk[mcp]
+    pip install lians-sdk[mcp]
 
 Run (stdio transport — standard for local LLM integration):
-    lian-mcp
+    lians-mcp
 
 Environment variables:
-    LIAN_URL        Lian API base URL (default: http://localhost:8000)
-    LIAN_API_KEY    API key with read+write scopes
-    LIAN_AGENT_ID   Agent identifier / memory namespace (default: mcp-agent)
+    LIANS_URL        Lians API base URL (default: http://localhost:8000)
+    LIANS_API_KEY    API key with read+write scopes
+    LIANS_AGENT_ID   Agent identifier / memory namespace (default: mcp-agent)
 
 Configure in Claude Desktop (~/Library/Application Support/Claude/claude_desktop_config.json):
     {
       "mcpServers": {
-        "lian": {
-          "command": "lian-mcp",
+        "lians": {
+          "command": "lians-mcp",
           "env": {
-            "LIAN_URL": "https://your-lian.internal",
-            "LIAN_API_KEY": "lian_...",
-            "LIAN_AGENT_ID": "trading-desk-1"
+            "LIANS_URL": "https://your-lians.internal",
+            "LIANS_API_KEY": "lians_...",
+            "LIANS_AGENT_ID": "trading-desk-1"
           }
         }
       }
@@ -35,19 +35,19 @@ import asyncio
 import os
 from typing import Any
 
-LIAN_URL = os.environ.get("LIAN_URL", "http://localhost:8000")
-LIAN_API_KEY = os.environ.get("LIAN_API_KEY", "")
-LIAN_AGENT_ID = os.environ.get("LIAN_AGENT_ID", "mcp-agent")
+LIANS_URL = os.environ.get("LIANS_URL", "http://localhost:8000")
+LIANS_API_KEY = os.environ.get("LIANS_API_KEY", "")
+LIANS_AGENT_ID = os.environ.get("LIANS_AGENT_ID", "mcp-agent")
 
 
 async def _api(method: str, path: str, body: dict | None = None) -> dict:
     import httpx
-    headers = {"X-API-Key": LIAN_API_KEY, "Content-Type": "application/json"}
+    headers = {"X-API-Key": LIANS_API_KEY, "Content-Type": "application/json"}
     async with httpx.AsyncClient(timeout=30.0) as client:
         if method == "POST":
-            r = await client.post(f"{LIAN_URL}{path}", json=body, headers=headers)
+            r = await client.post(f"{LIANS_URL}{path}", json=body, headers=headers)
         else:
-            r = await client.get(f"{LIAN_URL}{path}", params=body or {}, headers=headers)
+            r = await client.get(f"{LIANS_URL}{path}", params=body or {}, headers=headers)
         r.raise_for_status()
         return r.json()
 
@@ -65,7 +65,7 @@ def _build_server() -> Any:
     from mcp.server import Server
     from mcp.types import Tool, TextContent
 
-    server = Server("lian")
+    server = Server("lians")
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
@@ -76,7 +76,7 @@ def _build_server() -> Any:
                     "Store a financial fact, observation, or decision in persistent memory. "
                     "Always provide event_time_iso as when the event occurred, not now. "
                     "Add ticker/metric/entity metadata for precise supersession detection — "
-                    "this lets Lian automatically replace stale guidance numbers."
+                    "this lets Lians automatically replace stale guidance numbers."
                 ),
                 inputSchema={
                     "type": "object",
@@ -252,7 +252,7 @@ def _build_server() -> Any:
         try:
             if name == "remember":
                 body = {
-                    "agent_id": LIAN_AGENT_ID,
+                    "agent_id": LIANS_AGENT_ID,
                     "content": arguments["content"],
                     "event_time": arguments["event_time_iso"],
                     "source": arguments.get("source", "mcp"),
@@ -264,7 +264,7 @@ def _build_server() -> Any:
 
             elif name == "recall":
                 body = {
-                    "agent_id": LIAN_AGENT_ID,
+                    "agent_id": LIANS_AGENT_ID,
                     "query": arguments["query"],
                     "k": arguments.get("k", 5),
                     "filters": arguments.get("filters", {}),
@@ -274,7 +274,7 @@ def _build_server() -> Any:
 
             elif name == "recall_at":
                 body = {
-                    "agent_id": LIAN_AGENT_ID,
+                    "agent_id": LIANS_AGENT_ID,
                     "query": arguments["query"],
                     "k": arguments.get("k", 5),
                     "as_of": arguments["as_of_iso"],
@@ -288,7 +288,7 @@ def _build_server() -> Any:
 
             elif name == "reconstruct":
                 body_r: dict = {
-                    "agent_id": LIAN_AGENT_ID,
+                    "agent_id": LIANS_AGENT_ID,
                     "as_of": arguments["as_of_iso"],
                 }
                 if "query" in arguments:
@@ -348,7 +348,7 @@ def _build_server() -> Any:
                 result = await _api(
                     "GET",
                     f"/v1/facts/history?ticker={ticker}&metric={metric}"
-                    f"&agent_id={LIAN_AGENT_ID}&limit={limit}",
+                    f"&agent_id={LIANS_AGENT_ID}&limit={limit}",
                 )
                 items = result.get("items", [])
                 canonical = result.get("ticker", ticker)
@@ -362,7 +362,7 @@ def _build_server() -> Any:
 
             elif name == "backtest_check":
                 result = await _api("POST", "/v1/backtest/check", {
-                    "agent_id": LIAN_AGENT_ID,
+                    "agent_id": LIANS_AGENT_ID,
                     "simulation_as_of": arguments["simulation_as_of_iso"],
                 })
                 is_clean = result.get("is_clean", True)
@@ -389,7 +389,7 @@ def _build_server() -> Any:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
         except Exception as exc:
-            return [TextContent(type="text", text=f"Lian error ({name}): {exc}")]
+            return [TextContent(type="text", text=f"Lians error ({name}): {exc}")]
 
     return server
 
@@ -399,7 +399,7 @@ async def _main() -> None:
         from mcp.server.stdio import stdio_server
     except ImportError:
         raise SystemExit(
-            "MCP package not installed. Run: pip install 'lian-sdk[mcp]'"
+            "MCP package not installed. Run: pip install 'lians-sdk[mcp]'"
         )
 
     server = _build_server()

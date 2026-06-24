@@ -1,7 +1,7 @@
 ﻿"""
 LangChain integration tests.
 
-All tests run against LocalLianClient (real SQLite, no server).
+All tests run against LocalLiansClient (real SQLite, no server).
 Skips cleanly if langchain-core is not installed.
 """
 import sys
@@ -15,10 +15,10 @@ langchain_core = pytest.importorskip("langchain_core")
 
 from langchain_core.messages import HumanMessage, AIMessage
 
-from lian import LocalLianClient
-from lian.langchain_integration import (
-    LianChatHistory,
-    LianTools,
+from lians import LocalLiansClient
+from lians.langchain_integration import (
+    LiansChatHistory,
+    LiansTools,
     build_tools,
 )
 
@@ -28,19 +28,19 @@ T2 = datetime(2026, 6, 1, tzinfo=timezone.utc)
 
 
 # ===========================================================================
-# LianChatHistory
+# LiansChatHistory
 # ===========================================================================
 
 class TestLianChatHistory:
 
     def test_empty_history_returns_empty_list(self):
-        with LocalLianClient() as client:
-            history = LianChatHistory(client=client, session_id="s1")
+        with LocalLiansClient() as client:
+            history = LiansChatHistory(client=client, session_id="s1")
             assert history.messages == []
 
     def test_add_and_retrieve_messages(self):
-        with LocalLianClient() as client:
-            history = LianChatHistory(client=client, session_id="s2")
+        with LocalLiansClient() as client:
+            history = LiansChatHistory(client=client, session_id="s2")
             history.add_messages([
                 HumanMessage(content="What is NVDA guidance?"),
                 AIMessage(content="NVDA Q3 guidance is $36B as of May 2026."),
@@ -53,8 +53,8 @@ class TestLianChatHistory:
         assert "$36B" in msgs[1].content
 
     def test_messages_returned_in_chronological_order(self):
-        with LocalLianClient() as client:
-            history = LianChatHistory(client=client, session_id="s3")
+        with LocalLiansClient() as client:
+            history = LiansChatHistory(client=client, session_id="s3")
             history.add_messages([HumanMessage(content="first")])
             history.add_messages([AIMessage(content="second")])
             history.add_messages([HumanMessage(content="third")])
@@ -63,9 +63,9 @@ class TestLianChatHistory:
 
     def test_session_isolation(self):
         """Messages from different sessions must not bleed across."""
-        with LocalLianClient() as client:
-            h1 = LianChatHistory(client=client, session_id="alice")
-            h2 = LianChatHistory(client=client, session_id="bob")
+        with LocalLiansClient() as client:
+            h1 = LiansChatHistory(client=client, session_id="alice")
+            h2 = LiansChatHistory(client=client, session_id="bob")
             h1.add_messages([HumanMessage(content="Alice's secret")])
             h2.add_messages([HumanMessage(content="Bob's message")])
             alice_msgs = h1.messages
@@ -77,16 +77,16 @@ class TestLianChatHistory:
 
     def test_clear_is_noop(self):
         """clear() must not raise (audit trail is immutable)."""
-        with LocalLianClient() as client:
-            history = LianChatHistory(client=client, session_id="s4")
+        with LocalLiansClient() as client:
+            history = LiansChatHistory(client=client, session_id="s4")
             history.add_messages([HumanMessage(content="hello")])
             history.clear()
             # Messages still in the immutable audit trail
             assert len(history.messages) >= 0   # does not raise
 
     def test_multiple_turns_roundtrip(self):
-        with LocalLianClient() as client:
-            history = LianChatHistory(client=client, session_id="s5")
+        with LocalLiansClient() as client:
+            history = LiansChatHistory(client=client, session_id="s5")
             turns = [
                 HumanMessage(content=f"turn {i}") for i in range(5)
             ]
@@ -97,25 +97,25 @@ class TestLianChatHistory:
 
 
 # ===========================================================================
-# LianTools / build_tools
+# LiansTools / build_tools
 # ===========================================================================
 
 class TestLianTools:
 
     def test_build_tools_returns_three_tools(self):
-        with LocalLianClient() as client:
+        with LocalLiansClient() as client:
             tools = build_tools(client, agent_id="a")
         names = {t.name for t in tools}
         assert names == {"remember", "recall", "recall_at"}
 
     def test_agentmemtools_as_tools(self):
-        with LocalLianClient() as client:
-            provider = LianTools(client=client, agent_id="a")
+        with LocalLiansClient() as client:
+            provider = LiansTools(client=client, agent_id="a")
             tools = provider.as_tools()
         assert len(tools) == 3
 
     def test_remember_tool_stores_memory(self):
-        with LocalLianClient() as client:
+        with LocalLiansClient() as client:
             tools = {t.name: t for t in build_tools(client, agent_id="a")}
             result = tools["remember"].invoke({
                 "content": "NVDA Q3 guidance raised to $36B",
@@ -127,7 +127,7 @@ class TestLianTools:
         assert any("$36B" in (m.get("content") or "") for m in memories)
 
     def test_recall_tool_finds_remembered_fact(self):
-        with LocalLianClient() as client:
+        with LocalLiansClient() as client:
             tools = {t.name: t for t in build_tools(client, agent_id="b")}
             tools["remember"].invoke({
                 "content": "AAPL gross margin 46%",
@@ -139,7 +139,7 @@ class TestLianTools:
 
     def test_recall_at_returns_point_in_time_snapshot(self):
         """recall_at must exclude memories with event_time after as_of."""
-        with LocalLianClient() as client:
+        with LocalLiansClient() as client:
             tools = {t.name: t for t in build_tools(client, agent_id="c")}
 
             # Store two sequential guidance values
@@ -165,14 +165,14 @@ class TestLianTools:
         assert "$36B" not in result
 
     def test_recall_no_results_returns_message(self):
-        with LocalLianClient() as client:
+        with LocalLiansClient() as client:
             tools = {t.name: t for t in build_tools(client, agent_id="d")}
             result = tools["recall"].invoke({"query": "nonexistent zzzxxx", "k": 3})
         assert "No relevant memories" in result
 
     def test_remember_tool_metadata_filter(self):
         """metadata passed to remember is available for recall filtering."""
-        with LocalLianClient() as client:
+        with LocalLiansClient() as client:
             tools = {t.name: t for t in build_tools(client, agent_id="e")}
             tools["remember"].invoke({
                 "content": "AMD gross margin 50%",
@@ -189,7 +189,7 @@ class TestLianTools:
         assert "AMD" in result or "NVDA" in result
 
     def test_recall_at_header_contains_date(self):
-        with LocalLianClient() as client:
+        with LocalLiansClient() as client:
             tools = {t.name: t for t in build_tools(client, agent_id="f")}
             tools["remember"].invoke({
                 "content": "Test fact",
@@ -204,14 +204,14 @@ class TestLianTools:
 
     def test_tools_have_descriptions(self):
         """Tool descriptions must be non-empty so LLMs know how to use them."""
-        with LocalLianClient() as client:
+        with LocalLiansClient() as client:
             tools = build_tools(client, agent_id="g")
         for tool in tools:
             assert tool.description, f"{tool.name} has no description"
             assert len(tool.description) > 20
 
     def test_tools_have_args_schema(self):
-        with LocalLianClient() as client:
+        with LocalLiansClient() as client:
             tools = build_tools(client, agent_id="h")
         for tool in tools:
             assert tool.args_schema is not None, f"{tool.name} missing args_schema"

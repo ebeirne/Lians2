@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "lian"
+name = "lians"
 version = "0.1.0"
 description = "Financial-grade AI memory — bitemporal facts, SEC 17a-4 audit chain, GDPR crypto-shred"
 license = { text = "Apache-2.0" }
@@ -38,12 +38,12 @@ dev = [
 ]
 
 [project.urls]
-Homepage      = "https://github.com/ebeirne/Lian"
-Repository    = "https://github.com/ebeirne/Lian"
-Documentation = "https://github.com/ebeirne/Lian#readme"
+Homepage      = "https://github.com/ebeirne/Lians"
+Repository    = "https://github.com/ebeirne/Lians"
+Documentation = "https://github.com/ebeirne/Lians#readme"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/lian"]
+packages = ["src/lians"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -15,9 +15,9 @@ from httpx import AsyncClient, ASGITransport
 # (created_at â‰ˆ now) always satisfy `created_at <= AUDIT_AS_OF`.
 AUDIT_AS_OF = datetime(2099, 1, 1, tzinfo=timezone.utc)
 
-from src.lian.main import app
-from src.lian.db import get_db
-from src.lian.models import ApiKey
+from src.lians.main import app
+from src.lians.db import get_db
+from src.lians.models import ApiKey
 
 
 TEST_KEY = "integration-test-key-secret"
@@ -69,7 +69,7 @@ def _mem(content: str, event_time: datetime = T0, meta: dict | None = None) -> d
 @pytest.mark.asyncio
 async def test_health(client):
     from unittest.mock import AsyncMock, patch
-    with patch("src.lian.cache._get_redis") as mock_redis:
+    with patch("src.lians.cache._get_redis") as mock_redis:
         mock_redis.return_value.ping = AsyncMock(return_value=True)
         resp = await client.get("/health")
     assert resp.status_code == 200

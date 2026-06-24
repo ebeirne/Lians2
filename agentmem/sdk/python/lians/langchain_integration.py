@@ -1,17 +1,17 @@
 ﻿"""
-LangChain integration for Lian.
+LangChain integration for Lians.
 
 Two integration patterns:
 
-1. LianChatHistory — BaseChatMessageHistory for RunnableWithMessageHistory.
-   Stores conversation turns as Lian memories; supports per-session isolation.
+1. LiansChatHistory — BaseChatMessageHistory for RunnableWithMessageHistory.
+   Stores conversation turns as Lians memories; supports per-session isolation.
 
-2. LianTools / build_tools — three StructuredTools for ReAct agents and
+2. LiansTools / build_tools — three StructuredTools for ReAct agents and
    LangGraph nodes: remember, recall, recall_at.  The recall_at tool is the
    differentiating one — it answers "what did we know on date X?" which plain
    vector stores cannot.
 
-Both work with any Lian client (LocalLianClient for dev, LianClient
+Both work with any Lians client (LocalLiansClient for dev, LiansClient
 for production) and require no changes to swap between them.
 
 Install langchain support::
@@ -21,25 +21,25 @@ Install langchain support::
 
 Usage — chat history::
 
-    from lian import LocalLianClient
-    from lian.langchain_integration import LianChatHistory
+    from lians import LocalLiansClient
+    from lians.langchain_integration import LiansChatHistory
     from langchain_core.runnables.history import RunnableWithMessageHistory
 
-    client = LocalLianClient()
+    client = LocalLiansClient()
 
     chain_with_history = RunnableWithMessageHistory(
         your_chain,
-        lambda session_id: LianChatHistory(client=client, session_id=session_id),
+        lambda session_id: LiansChatHistory(client=client, session_id=session_id),
         input_messages_key="input",
         history_messages_key="history",
     )
 
 Usage — agent tools::
 
-    from lian import LocalLianClient
-    from lian.langchain_integration import build_tools
+    from lians import LocalLiansClient
+    from lians.langchain_integration import build_tools
 
-    client = LocalLianClient()
+    client = LocalLiansClient()
     tools = build_tools(client, agent_id="research-agent")
 
     # Pass tools to any LangChain agent / LangGraph node
@@ -58,14 +58,14 @@ from datetime import timedelta
 
 
 # ---------------------------------------------------------------------------
-# LianChatHistory
+# LiansChatHistory
 # ---------------------------------------------------------------------------
 
-class LianChatHistory(BaseChatMessageHistory):
+class LiansChatHistory(BaseChatMessageHistory):
     """
-    LangChain chat message history backed by Lian.
+    LangChain chat message history backed by Lians.
 
-    Each conversation turn is stored as a Lian memory with:
+    Each conversation turn is stored as a Lians memory with:
       - agent_id = agent_id (default "chat")
       - metadata = {"session_id": session_id, "msg_type": "human" | "ai"}
 
@@ -73,10 +73,10 @@ class LianChatHistory(BaseChatMessageHistory):
 
     Example::
 
-        history = LianChatHistory(client=LocalLianClient(), session_id="user-123")
+        history = LiansChatHistory(client=LocalLiansClient(), session_id="user-123")
         chain = RunnableWithMessageHistory(
             chain,
-            lambda sid: LianChatHistory(client=client, session_id=sid),
+            lambda sid: LiansChatHistory(client=client, session_id=sid),
         )
     """
 
@@ -136,13 +136,13 @@ class LianChatHistory(BaseChatMessageHistory):
             )
 
     def clear(self) -> None:
-        # Lian's audit trail is immutable — nothing to delete.
+        # Lians's audit trail is immutable — nothing to delete.
         # For GDPR erasure use client.erase(subject_id=...) explicitly.
         pass
 
 
 # ---------------------------------------------------------------------------
-# LianTools
+# LiansTools
 # ---------------------------------------------------------------------------
 
 class _RememberInput(BaseModel):
@@ -196,7 +196,7 @@ def _format_memories(memories: list[dict]) -> str:
 
 def build_tools(client: Any, agent_id: str) -> list[BaseTool]:
     """
-    Return three LangChain tools wired to the given Lian client.
+    Return three LangChain tools wired to the given Lians client.
 
     remember   — store a fact with its event timestamp
     recall     — retrieve current relevant memories by semantic search
@@ -204,7 +204,7 @@ def build_tools(client: Any, agent_id: str) -> list[BaseTool]:
 
     Example::
 
-        tools = build_tools(LocalLianClient(), agent_id="research-agent")
+        tools = build_tools(LocalLiansClient(), agent_id="research-agent")
         agent = create_react_agent(llm, tools, prompt)
     """
 
@@ -268,13 +268,13 @@ def build_tools(client: Any, agent_id: str) -> list[BaseTool]:
     return [remember_tool, recall_tool, recall_at_tool]
 
 
-class LianTools:
+class LiansTools:
     """
     Convenience wrapper — holds a client and builds tools on demand.
 
     Example::
 
-        tools_provider = LianTools(client=LocalLianClient(), agent_id="agent-1")
+        tools_provider = LiansTools(client=LocalLiansClient(), agent_id="agent-1")
         agent = create_react_agent(llm, tools_provider.as_tools(), prompt)
     """
 

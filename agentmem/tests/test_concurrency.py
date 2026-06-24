@@ -25,8 +25,8 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import StaticPool
 
-from src.lian.schemas import MemoryAdd, RecallRequest
-from src.lian.memory_service import add_memory, recall_memories, _write_lock_keys
+from src.lians.schemas import MemoryAdd, RecallRequest
+from src.lians.memory_service import add_memory, recall_memories, _write_lock_keys
 
 NS    = "concurrency-ns"
 AGENT = "concurrency-agent"
@@ -43,7 +43,7 @@ async def session_factory(test_settings):
     Mirrors production: each add_memory call uses its own session,
     just as each HTTP request uses its own get_db() session.
     """
-    from src.lian.models import Base as AppBase
+    from src.lians.models import Base as AppBase
 
     # Use SQLite shared-cache URI so each session gets its own connection
     # but all sessions share the same in-memory database â€” avoids StaticPool's
@@ -144,7 +144,7 @@ class TestSequentialConsistency:
         ))
 
         from sqlalchemy import select
-        from src.lian.models import Memory as MemModel
+        from src.lians.models import Memory as MemModel
 
         open_mems = (await db.execute(
             select(MemModel).where(
@@ -166,7 +166,7 @@ class TestSequentialConsistency:
         Each memory in the chain points to its successor via superseded_by.
         The chain must be acyclic and terminate at the current memory.
         """
-        from src.lian.models import Memory as MemModel
+        from src.lians.models import Memory as MemModel
 
         meta = {"ticker": "AAPL", "metric": "revenue"}
         mems = []
@@ -211,7 +211,7 @@ class TestConcurrentAsyncioWrites:
         (valid_to=None) memory â€” no ghost current facts.
         """
         from sqlalchemy import select
-        from src.lian.models import Memory as MemModel
+        from src.lians.models import Memory as MemModel
 
         meta = {"ticker": "TSLA", "metric": "deliveries"}
 
@@ -254,7 +254,7 @@ class TestConcurrentAsyncioWrites:
         interfere â€” both end up as open memories.
         """
         from sqlalchemy import select
-        from src.lian.models import Memory as MemModel
+        from src.lians.models import Memory as MemModel
 
         agent = f"{AGENT}-diff"
 
@@ -289,7 +289,7 @@ class TestConcurrentAsyncioWrites:
         Five concurrent adds for the same metric â€” exactly one must be open.
         """
         from sqlalchemy import select
-        from src.lian.models import Memory as MemModel
+        from src.lians.models import Memory as MemModel
 
         meta  = {"ticker": "NVDA", "metric": "guidance"}
         agent = f"{AGENT}-five"
@@ -328,7 +328,7 @@ class TestConcurrentAsyncioWrites:
         This test validates the isolation invariant using separate sessions.
         """
         from sqlalchemy import select
-        from src.lian.models import Memory as MemModel
+        from src.lians.models import Memory as MemModel
 
         meta = {"ticker": "MSFT", "metric": "cloud_revenue"}
 

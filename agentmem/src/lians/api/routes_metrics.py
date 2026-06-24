@@ -12,7 +12,7 @@ from the monitoring namespace).
 To disable the endpoint entirely set ``METRICS_ENABLED=false`` in the
 environment.  Any scrape will receive 404 while the flag is off.
 
-Metrics emitted (see src/lian/metrics.py for full list):
+Metrics emitted (see src/lians/metrics.py for full list):
 
     agentmem_memory_writes_total{namespace, relation}
     agentmem_memory_recalls_total{namespace, router, cache_hit}

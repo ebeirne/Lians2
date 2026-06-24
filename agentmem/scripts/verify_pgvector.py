@@ -119,8 +119,8 @@ async def run(url: str) -> bool:
             session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
             async with session_factory() as db:
-                from src.lian.memory_service import add_memory
-                from src.lian.schemas import MemoryAdd
+                from src.lians.memory_service import add_memory
+                from src.lians.schemas import MemoryAdd
                 result = await add_memory(db, "_verify_ns_", MemoryAdd(
                     agent_id="_verify_agent_",
                     content="pgvector verification ping",
@@ -187,7 +187,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Ensure src.lian is importable
+    # Ensure src.lians is importable
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

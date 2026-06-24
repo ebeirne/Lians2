@@ -1,9 +1,9 @@
-name: Publish lian to PyPI
+name: Publish lians to PyPI
 
 on:
   push:
     tags:
-      - "lian-v*"
+      - "lians-v*"
 
 jobs:
   build:

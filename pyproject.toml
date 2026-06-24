@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "lian"
+name = "lians"
 version = "0.1.0"
-description = "Lian — financial-grade agent memory with bitemporal model, audit chain, and compliance stack"
+description = "Lians — financial-grade agent memory with bitemporal model, audit chain, and compliance stack"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.111.0",
@@ -52,7 +52,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["agentmem/src/lian"]
+packages = ["agentmem/src/lians"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

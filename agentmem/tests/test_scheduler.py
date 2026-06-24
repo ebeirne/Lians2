@@ -14,8 +14,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import StaticPool
 
-from src.lian.models import Memory, NamespacePolicy, EventLog
-from src.lian.scheduler import _run_prune_cycle, run_retention_scheduler
+from src.lians.models import Memory, NamespacePolicy, EventLog
+from src.lians.scheduler import _run_prune_cycle, run_retention_scheduler
 
 
 # ---------------------------------------------------------------------------
@@ -24,7 +24,7 @@ from src.lian.scheduler import _run_prune_cycle, run_retention_scheduler
 
 @pytest_asyncio.fixture
 async def session_factory():
-    from src.lian.models import Base as AppBase
+    from src.lians.models import Base as AppBase
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
@@ -238,7 +238,7 @@ class TestSchedulerTask:
     @pytest.mark.asyncio
     async def test_scheduler_disabled_when_interval_zero(self):
         """Interval 0 means the task is never started â€” tested via config path."""
-        from src.lian.config import get_settings
+        from src.lians.config import get_settings
         settings = get_settings()
         # Verify the config field is present and 0 disables
         assert hasattr(settings, "retention_prune_interval_hours")

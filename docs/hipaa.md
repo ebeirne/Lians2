@@ -1,14 +1,14 @@
-﻿# Lian — HIPAA Technical Safeguards Mapping
+﻿# Lians — HIPAA Technical Safeguards Mapping
 
-**Audience**: Healthcare IT procurement, HIPAA compliance officers, Privacy/Security Officers reviewing Lian as a component of a covered entity's or business associate's AI infrastructure.
+**Audience**: Healthcare IT procurement, HIPAA compliance officers, Privacy/Security Officers reviewing Lians as a component of a covered entity's or business associate's AI infrastructure.
 
-**Scope**: This document maps Lian's technical controls to the HIPAA Security Rule Technical Safeguards (45 CFR §164.312). It also covers PHI data flow, encryption posture, and the BAA requirement.
+**Scope**: This document maps Lians's technical controls to the HIPAA Security Rule Technical Safeguards (45 CFR §164.312). It also covers PHI data flow, encryption posture, and the BAA requirement.
 
-> **CRITICAL**: A Business Associate Agreement (BAA) **must be executed** between the covered entity (hospital, health system, payer) and the Lian operator **before any real patient data (PHI) is processed**. This document describes technical controls only — it does not substitute for a BAA, legal review, or HIPAA risk analysis.
+> **CRITICAL**: A Business Associate Agreement (BAA) **must be executed** between the covered entity (hospital, health system, payer) and the Lians operator **before any real patient data (PHI) is processed**. This document describes technical controls only — it does not substitute for a BAA, legal review, or HIPAA risk analysis.
 
 ---
 
-## PHI in Lian: What Flows Through the System
+## PHI in Lians: What Flows Through the System
 
 When `DOMAIN_ADAPTER=healthcare`, the following structured keys may carry PHI under HIPAA's Safe Harbor or Expert Determination de-identification standards:
 
@@ -23,7 +23,7 @@ When `DOMAIN_ADAPTER=healthcare`, the following structured keys may carry PHI un
 
 Memory **content** (the text stored alongside structured keys) may also contain PHI depending on what clinical agents write.
 
-Lian does **not** process PHI itself — it stores, retrieves, and manages memory records that may contain PHI. This makes Lian a **business associate** when deployed to support a covered entity's operations.
+Lians does **not** process PHI itself — it stores, retrieves, and manages memory records that may contain PHI. This makes Lians a **business associate** when deployed to support a covered entity's operations.
 
 ---
 
@@ -33,7 +33,7 @@ Lian does **not** process PHI itself — it stores, retrieves, and manages memor
 
 > "Implement technical policies and procedures for electronic information systems that maintain electronic protected health information to allow access only to those persons or software programs that have been granted access rights."
 
-| Sub-specification | Required/Addressable | Lian Control |
+| Sub-specification | Required/Addressable | Lians Control |
 |------------------|---------------------|-----------------|
 | (a)(2)(i) Unique user identification | Required | API keys are per-agent identifiers; admin credentials are separate. Every memory write and recall records the `agent_id`. |
 | (a)(2)(ii) Emergency access procedure | Required | Admin API key (`ADMIN_SECRET`) provides emergency override; barrier group session var is not set for admin routes, exposing all rows. Document this key in your organization's emergency access procedure. |
@@ -62,7 +62,7 @@ POST /v1/admin/agents
 
 > "Implement hardware, software, and/or procedural mechanisms that record and examine activity in information systems that contain or use electronic protected health information."
 
-| Requirement | Lian Implementation |
+| Requirement | Lians Implementation |
 |-------------|------------------------|
 | Record activity | Every memory write, recall, supersession, and erasure writes an immutable audit event |
 | Examine activity | `GET /v1/admin/audit/export?start=<ISO>&end=<ISO>` — structured NDJSON, filterable by agent, namespace, event type |
@@ -75,7 +75,7 @@ POST /v1/admin/agents
 
 > "Implement policies and procedures to protect electronic protected health information from improper alteration or destruction."
 
-| Sub-specification | Required/Addressable | Lian Control |
+| Sub-specification | Required/Addressable | Lians Control |
 |------------------|---------------------|-----------------|
 | (c)(2) Mechanism to authenticate ePHI | Addressable | SHA-256 content hash stored on every memory row; checked during audit chain verification. Detects any post-write modification. |
 
@@ -87,7 +87,7 @@ The hash chain provides **non-repudiation of memory state**: if a record is alte
 
 > "Implement procedures to verify that a person or entity seeking access to electronic protected health information is the one claimed."
 
-| Requirement | Lian Control |
+| Requirement | Lians Control |
 |-------------|-----------------|
 | Agent authentication | HMAC-SHA256 signed API keys, scoped to namespace + agent_id |
 | Admin authentication | Separate `ADMIN_SECRET` credential; not derivable from agent API keys |
@@ -99,12 +99,12 @@ The hash chain provides **non-repudiation of memory state**: if a record is alte
 
 > "Implement technical security measures to guard against unauthorized access to electronic protected health information that is being transmitted over an electronic communications network."
 
-| Sub-specification | Required/Addressable | Lian Control |
+| Sub-specification | Required/Addressable | Lians Control |
 |------------------|---------------------|-----------------|
 | (e)(2)(i) Integrity controls | Addressable | TLS provides transmission integrity; HMAC signature on API keys prevents token substitution |
 | (e)(2)(ii) Encryption | Addressable | TLS 1.2+ enforced at the reverse proxy / load balancer layer; configure `sslmode=require` on DATABASE_URL for Postgres transmission |
 
-**Note**: TLS termination occurs at the network boundary. Lian does not handle TLS directly — deploy behind nginx, Caddy, or a cloud load balancer with TLS enforced.
+**Note**: TLS termination occurs at the network boundary. Lians does not handle TLS directly — deploy behind nginx, Caddy, or a cloud load balancer with TLS enforced.
 
 ---
 
@@ -137,13 +137,13 @@ KMS_AWS_ENCRYPTED_KEY=<base64 CiphertextBlob>
 # Azure Key Vault (for Azure-hosted deployments)
 KMS_PROVIDER=azure
 KMS_AZURE_VAULT_URL=https://myvault.vault.azure.net/
-KMS_AZURE_SECRET_NAME=Lian-master-key
+KMS_AZURE_SECRET_NAME=Lians-master-key
 
 # HashiCorp Vault (for on-prem or multi-cloud)
 KMS_PROVIDER=vault
 KMS_VAULT_ADDR=https://vault.internal:8200
 KMS_VAULT_TOKEN=<token>
-KMS_VAULT_PATH=Lian/master-key
+KMS_VAULT_PATH=Lians/master-key
 ```
 
 ---
@@ -205,11 +205,11 @@ An adverse event investigation requires proving what the AI agent knew — and d
 
 ## BAA Requirement and Current Status
 
-Lian is currently an **open-source self-hosted product**. For regulated healthcare deployments:
+Lians is currently an **open-source self-hosted product**. For regulated healthcare deployments:
 
 1. **If self-hosting**: the covered entity is its own operator. A BAA between the CE and its own IT/infrastructure team is governed by internal policy, not an external agreement.
 2. **If using a managed deployment**: a BAA with the managed service operator is required before any PHI is processed.
 
-Lian does not currently offer a managed service. All deployments are self-hosted, so requirement (1) applies.
+Lians does not currently offer a managed service. All deployments are self-hosted, so requirement (1) applies.
 
 **Enterprise advisory**: consult your Privacy Officer and legal counsel before deploying any AI system that may process PHI. This document describes technical controls, not legal compliance.

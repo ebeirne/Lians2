@@ -1,27 +1,27 @@
-﻿# Lian (蓮)
+﻿# Lians (蓮)
 
 **Financial-grade AI memory** — bitemporal facts, SEC 17a-4 audit chain, GDPR crypto-shred.
 
 ## Install
 
 ```bash
-pip install lian-sdk          # HTTP client only
-pip install lian-sdk[local]        # + zero-setup SQLite mode (no server needed)
-pip install lian-sdk[langchain]    # + LangChain chat history & tools
-pip install lian-sdk[langgraph]    # + LangGraph node factories
-pip install lian-sdk[crewai]       # + CrewAI BaseTool wrappers
-pip install lian-sdk[openai-agents] # + OpenAI Agents SDK tools
-pip install lian-sdk[autogen]      # + AutoGen v0.4 tools
-pip install lian-sdk[all]          # Everything
+pip install lians-sdk          # HTTP client only
+pip install lians-sdk[local]        # + zero-setup SQLite mode (no server needed)
+pip install lians-sdk[langchain]    # + LangChain chat history & tools
+pip install lians-sdk[langgraph]    # + LangGraph node factories
+pip install lians-sdk[crewai]       # + CrewAI BaseTool wrappers
+pip install lians-sdk[openai-agents] # + OpenAI Agents SDK tools
+pip install lians-sdk[autogen]      # + AutoGen v0.4 tools
+pip install lians-sdk[all]          # Everything
 ```
 
 ## Quickstart
 
 ```python
-from lian import LocalLianClient
+from lians import LocalLiansClient
 from datetime import datetime, timezone
 
-mem = LocalLianClient()  # no server, no Docker, no API key
+mem = LocalLiansClient()  # no server, no Docker, no API key
 
 mem.add(
     agent_id="analyst-1",
@@ -51,9 +51,9 @@ mem.add_from_messages(
 )
 ```
 
-## What makes Lian different
+## What makes Lians different
 
-| Feature | Lian | mem0 | Graphiti/Zep |
+| Feature | Lians | mem0 | Graphiti/Zep |
 |---------|------|------|-------------|
 | Bitemporal model (event + ingestion time) | ✓ | ✗ | ✓ |
 | Supersession (stale facts excluded at DB layer) | ✓ | ✗ | Partial |
@@ -66,31 +66,31 @@ mem.add_from_messages(
 
 ```python
 # LangChain
-from lian.langchain_integration import LianChatHistory, build_tools
+from lians.langchain_integration import LiansChatHistory, build_tools
 
 # LangGraph
-from lian.langgraph_integration import create_recall_node, create_remember_node
+from lians.langgraph_integration import create_recall_node, create_remember_node
 
 # CrewAI
-from lian.crewai_integration import build_crewai_tools
+from lians.crewai_integration import build_crewai_tools
 
 # OpenAI Agents SDK
-from lian.openai_agents_integration import build_openai_agent_tools
+from lians.openai_agents_integration import build_openai_agent_tools
 
 # AutoGen v0.4
-from lian.autogen_integration import build_autogen_tools
+from lians.autogen_integration import build_autogen_tools
 ```
 
 ## Switching to hosted API
 
 ```python
 # Dev (local SQLite, no server)
-from lian import LocalLianClient
-mem = LocalLianClient()
+from lians import LocalLiansClient
+mem = LocalLiansClient()
 
 # Production (self-hosted or managed)
-from lian import LianClient
-mem = LianClient(base_url="https://mem.yourfirm.internal", api_key="...")
+from lians import LiansClient
+mem = LiansClient(base_url="https://mem.yourfirm.internal", api_key="...")
 ```
 
-Full documentation: [github.com/ebeirne/Lian](https://github.com/ebeirne/Lian)
+Full documentation: [github.com/ebeirne/Lians](https://github.com/ebeirne/Lians)

@@ -28,15 +28,15 @@ async def app_client(monkeypatch):
     """
     monkeypatch.setenv("ADMIN_SECRET", ADMIN_SECRET)
 
-    from src.lian.config import get_settings
+    from src.lians.config import get_settings
     get_settings.cache_clear()
     monkeypatch.setenv("ADMIN_SECRET", ADMIN_SECRET)
     # Re-clear after setting env var (lru_cache reads env at call time)
     get_settings.cache_clear()
 
-    from src.lian.models import Base as AppBase
-    from src.lian.main import app
-    from src.lian.db import get_db
+    from src.lians.models import Base as AppBase
+    from src.lians.main import app
+    from src.lians.db import get_db
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",

@@ -21,7 +21,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 from alembic import context
 
-# Ensure `src.lian` is importable regardless of working directory.
+# Ensure `src.lians` is importable regardless of working directory.
 # prepend_sys_path = . in alembic.ini handles the common case (running from
 # agentmem/), but adding it explicitly here too makes env.py importable from
 # other tools (pytest-alembic, CI scripts, etc.).
@@ -31,9 +31,9 @@ if _pkg_root not in sys.path:
 
 # Import all model classes â€” this registers them with Base.metadata so that
 # autogenerate can diff the live DB against the current model definitions.
-from src.lian.models import Base  # noqa: E402
-from src.lian.config import get_settings  # noqa: E402
-from src.lian.db import parse_db_url  # noqa: E402
+from src.lians.models import Base  # noqa: E402
+from src.lians.config import get_settings  # noqa: E402
+from src.lians.db import parse_db_url  # noqa: E402
 
 config = context.config
 target_metadata = Base.metadata

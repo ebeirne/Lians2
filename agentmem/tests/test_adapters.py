@@ -12,12 +12,12 @@ Verifies:
 """
 import pytest
 
-from src.lian.adapters import get_adapter, register_adapter
-from src.lian.adapters.finance import FinanceAdapter
-from src.lian.adapters.passthrough import PassthroughAdapter
-from src.lian.adapters.healthcare import HealthcareAdapter
-from src.lian.adapters.legal import LegalAdapter
-from src.lian._types import (
+from src.lians.adapters import get_adapter, register_adapter
+from src.lians.adapters.finance import FinanceAdapter
+from src.lians.adapters.passthrough import PassthroughAdapter
+from src.lians.adapters.healthcare import HealthcareAdapter
+from src.lians.adapters.legal import LegalAdapter
+from src.lians._types import (
     _FINANCE_STRUCTURED_KEYS,
     _PASSTHROUGH_STRUCTURED_KEYS,
     _HEALTHCARE_STRUCTURED_KEYS,
@@ -98,19 +98,19 @@ def test_passthrough_adapter_no_ticker_normalization():
 # â”€â”€ Protocol compliance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_finance_adapter_implements_protocol():
-    from src.lian.adapters import DomainAdapter
+    from src.lians.adapters import DomainAdapter
     assert isinstance(FinanceAdapter(), DomainAdapter)
 
 
 def test_passthrough_adapter_implements_protocol():
-    from src.lian.adapters import DomainAdapter
+    from src.lians.adapters import DomainAdapter
     assert isinstance(PassthroughAdapter(), DomainAdapter)
 
 
 # â”€â”€ get_adapter() factory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_get_adapter_returns_finance_by_default(monkeypatch):
-    from src.lian.adapters import _registry
+    from src.lians.adapters import _registry
     _registry.clear()
     # Default DOMAIN_ADAPTER is "finance"
     adapter = get_adapter()
@@ -118,8 +118,8 @@ def test_get_adapter_returns_finance_by_default(monkeypatch):
 
 
 def test_get_adapter_returns_passthrough_when_configured(monkeypatch):
-    from src.lian.config import get_settings
-    from src.lian.adapters import _registry
+    from src.lians.config import get_settings
+    from src.lians.adapters import _registry
     _registry.clear()
     monkeypatch.setattr(get_settings(), "domain_adapter", "passthrough", raising=False)
     # Directly instantiate to avoid settings cache issues in tests
@@ -138,7 +138,7 @@ def test_custom_adapter_can_be_registered():
             return value.strip().lower()
 
     register_adapter("healthcare", HealthcareAdapter())
-    from src.lian.adapters import _registry
+    from src.lians.adapters import _registry
     assert "healthcare" in _registry
     adapter = _registry["healthcare"]
     assert "patient_id" in adapter.structured_keys
@@ -229,7 +229,7 @@ class TestHealthcareAdapter:
         assert self.adapter.key_aliases("unknown_key") == ["unknown_key"]
 
     def test_implements_protocol(self):
-        from src.lian.adapters import DomainAdapter
+        from src.lians.adapters import DomainAdapter
         assert isinstance(self.adapter, DomainAdapter)
 
 
@@ -289,7 +289,7 @@ class TestLegalAdapter:
         assert self.adapter.key_aliases("unknown_key") == ["unknown_key"]
 
     def test_implements_protocol(self):
-        from src.lian.adapters import DomainAdapter
+        from src.lians.adapters import DomainAdapter
         assert isinstance(self.adapter, DomainAdapter)
 
 

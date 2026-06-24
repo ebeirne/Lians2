@@ -2,7 +2,7 @@
 Demo: AgentMem + LangChain integration.
 
 Shows two patterns:
-  1. LianChatHistory — plugs into RunnableWithMessageHistory
+  1. LiansChatHistory — plugs into RunnableWithMessageHistory
   2. build_tools — three tools for a ReAct agent (no LLM required to run)
 
 Run with no server needed:
@@ -17,17 +17,17 @@ _root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_root / "sdk" / "python"))
 sys.path.insert(0, str(_root))
 
-from lian import LocalLianClient
-from lian.langchain_integration import LianChatHistory, build_tools
+from lians import LocalLiansClient
+from lians.langchain_integration import LiansChatHistory, build_tools
 from langchain_core.messages import HumanMessage, AIMessage
 
 
 def demo_chat_history():
-    print("=== Pattern 1: LianChatHistory ===\n")
-    client = LocalLianClient()
+    print("=== Pattern 1: LiansChatHistory ===\n")
+    client = LocalLiansClient()
 
     # Simulate a multi-turn conversation stored in AgentMem
-    history = LianChatHistory(client=client, session_id="demo-session-1")
+    history = LiansChatHistory(client=client, session_id="demo-session-1")
 
     history.add_messages([
         HumanMessage(content="What is NVDA's Q3 guidance?"),
@@ -42,13 +42,13 @@ def demo_chat_history():
         print(f"  {role}: {msg.content}")
 
     print(f"\n(Works with RunnableWithMessageHistory — pass a lambda that returns")
-    print(f" LianChatHistory(client=client, session_id=session_id))\n")
+    print(f" LiansChatHistory(client=client, session_id=session_id))\n")
     client.close()
 
 
 def demo_agent_tools():
     print("=== Pattern 2: AgentMem Tools for ReAct agents ===\n")
-    client = LocalLianClient()
+    client = LocalLiansClient()
     tools = {t.name: t for t in build_tools(client, agent_id="research-agent")}
 
     print("Available tools:", list(tools.keys()))

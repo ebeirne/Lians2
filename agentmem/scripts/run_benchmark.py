@@ -51,8 +51,8 @@ def _hdr(s):  return f"\n{_BOLD}{s}{_RESET}"
 async def _build_db():
     from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
     from sqlalchemy.pool import StaticPool
-    from agentmem.src.lian.models import Base
-    from agentmem.src.lian.kms import load_master_key
+    from agentmem.src.lians.models import Base
+    from agentmem.src.lians.kms import load_master_key
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
@@ -80,8 +80,8 @@ def _ts(*args):
 # â”€â”€ Benchmark 1: stale-fact contamination â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def bench_stale_fact(factory) -> dict:
-    from agentmem.src.lian.schemas import MemoryAdd, RecallRequest
-    from agentmem.src.lian.memory_service import add_memory, recall_memories
+    from agentmem.src.lians.schemas import MemoryAdd, RecallRequest
+    from agentmem.src.lians.memory_service import add_memory, recall_memories
 
     NS = "bench"
     REVISIONS = [
@@ -152,8 +152,8 @@ def bench_supersession() -> dict:
 # â”€â”€ Benchmark 3: point-in-time recall â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def bench_point_in_time(factory) -> dict:
-    from agentmem.src.lian.schemas import MemoryAdd, RecallRequest
-    from agentmem.src.lian.memory_service import add_memory, recall_memories
+    from agentmem.src.lians.schemas import MemoryAdd, RecallRequest
+    from agentmem.src.lians.memory_service import add_memory, recall_memories
 
     NS = "bench_pit"
     QUARTERS = [
@@ -200,9 +200,9 @@ async def bench_point_in_time(factory) -> dict:
 # â”€â”€ Benchmark 4: compliance (audit chain) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def bench_compliance(factory) -> dict:
-    from agentmem.src.lian.schemas import MemoryAdd
-    from agentmem.src.lian.memory_service import add_memory
-    from agentmem.src.lian.audit_chain import verify_chain
+    from agentmem.src.lians.schemas import MemoryAdd
+    from agentmem.src.lians.memory_service import add_memory
+    from agentmem.src.lians.audit_chain import verify_chain
 
     NS = "bench_compliance"
     async with factory() as db:
