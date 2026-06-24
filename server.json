@@ -1,0 +1,52 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ebeirne/lian",
+  "title": "Lian — Financial-Grade Agent Memory",
+  "description": "Bitemporal memory layer for AI agents with zero stale facts, SEC 17a-4 audit chain, GDPR crypto-shred, and information barriers. Built for regulated environments: finance, healthcare, legal. Superseded facts are excluded at the database layer — your LLM never sees stale data.",
+  "version": "0.1.1",
+  "websiteUrl": "https://github.com/ebeirne/Lian",
+  "repository": {
+    "url": "https://github.com/ebeirne/Lian",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "lian-sdk",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "named",
+          "name": "--extras",
+          "value": "mcp",
+          "description": "Install with MCP support: pip install lian-sdk[mcp]",
+          "isRequired": true
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "LIAN_URL",
+          "description": "Base URL of your Lian server (self-hosted or cloud)",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "name": "LIAN_API_KEY",
+          "description": "API key with read and write scopes",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "LIAN_AGENT_ID",
+          "description": "Agent identifier used as the memory namespace",
+          "isRequired": false,
+          "default": "mcp-agent"
+        }
+      ]
+    }
+  ]
+}

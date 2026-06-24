@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lian-sdk"
-version = "0.1.0"
+version = "0.1.1"
 description = "Financial-grade AI memory — bitemporal facts, SEC 17a-4 audit chain, GDPR crypto-shred"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
@@ -31,9 +31,13 @@ crewai        = ["crewai>=0.28"]
 openai-agents = ["openai-agents>=0.0.1"]
 autogen       = ["autogen-core>=0.4"]
 local         = ["sqlalchemy>=2.0", "aiosqlite>=0.19"]
+mcp           = ["mcp>=1.0.0", "httpx>=0.27.0"]
 all           = [
-    "lian-sdk[langchain,langgraph,crewai,openai-agents,autogen,local]",
+    "lian-sdk[langchain,langgraph,crewai,openai-agents,autogen,local,mcp]",
 ]
+
+[project.scripts]
+lian-mcp = "lian.mcp_server:main"
 
 [project.urls]
 Homepage      = "https://github.com/ebeirne/Lian"
