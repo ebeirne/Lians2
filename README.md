@@ -20,7 +20,7 @@
     <img src="https://img.shields.io/pypi/dm/lians-sdk?label=pypi%20downloads" alt="PyPI downloads">
   </a>
   <a href="https://github.com/Lians-ai/Lians">
-    <img src="https://img.shields.io/github/commit-activity/m/ebeirne/Lians/master?style=flat-square" alt="GitHub commit activity">
+    <img src="https://img.shields.io/github/commit-activity/m/Lians-ai/Lians/master?style=flat-square" alt="GitHub commit activity">
   </a>
   <a href="https://www.npmjs.com/package/@ebeirne/lians">
     <img src="https://img.shields.io/npm/v/%40ebeirne%2Flians?label=npm" alt="npm version">
