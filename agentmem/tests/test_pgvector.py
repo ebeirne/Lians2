@@ -312,11 +312,14 @@ class TestRLSInformationBarriers:
 
     async def test_barrier_group_isolation(self, pg_engine):
         """
-        A session with agentmem.barrier_group=A must not see memories tagged B.
+        A session scoped to barrier group A must not see memories tagged B —
+        enforced at the database layer, not the application.
 
-        This is the core RLS invariant: SET LOCAL agentmem.barrier_group = 'A'
-        causes the Postgres policy to filter out all rows where
-        barrier_group != 'A' AND barrier_group IS NOT NULL.
+        The CI/postgres-image login is a superuser, and superusers bypass RLS
+        unconditionally. To prove genuine enforcement we create a NOSUPERUSER /
+        NOBYPASSRLS role, GRANT it SELECT, switch to it with SET ROLE, set the
+        namespace + barrier session vars, and confirm the group-B row is filtered
+        out by the RESTRICTIVE barrier_isolation policy (migration 0013).
         """
         from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
         from sqlalchemy import text
@@ -326,25 +329,12 @@ class TestRLSInformationBarriers:
         ns = f"rls-iso-{uuid.uuid4().hex[:6]}"
         now = datetime.now(timezone.utc)
         id_a, id_b = str(uuid.uuid4()), str(uuid.uuid4())
+        role = f"lians_rls_test_{uuid.uuid4().hex[:10]}"
 
         factory = async_sessionmaker(pg_engine, expire_on_commit=False, class_=AsyncSession)
 
-        # RLS is bypassed entirely by superuser / BYPASSRLS roles (a PostgreSQL
-        # guarantee — FORCE ROW LEVEL SECURITY does not apply to them). The
-        # default postgres-image user is a superuser, so this denial check can
-        # only be exercised by a restricted role; skip cleanly otherwise.
         async with factory() as db:
-            bypasses_rls = (await db.execute(text(
-                "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user"
-            ))).scalar()
-        if bypasses_rls:
-            pytest.skip(
-                "connection role bypasses RLS (superuser/BYPASSRLS); barrier "
-                "isolation can only be verified by a non-privileged role"
-            )
-
-        # Insert both rows â€” no session var set, so IS NULL branch passes for all rows.
-        async with factory() as db:
+            # Insert both rows (as the superuser login).
             await db.execute(text("""
                 INSERT INTO memories
                     (id, namespace, agent_id, content_hash,
@@ -355,20 +345,31 @@ class TestRLSInformationBarriers:
             """), dict(id_a=id_a, id_b=id_b, ns=ns,
                        ha=self._ch("confidential-a"), hb=self._ch("confidential-b"),
                        now=now, ga=group_a, gb=group_b))
-            await db.commit()
 
-        # Read as group_a â€” must see only id_a
-        async with factory() as db:
-            await db.execute(text("SELECT set_config('agentmem.barrier_group', :g, true)"), {"g": group_a})
-            rows = (await db.execute(
-                text("SELECT id FROM memories WHERE namespace = :ns"), {"ns": ns}
-            )).fetchall()
-            visible = {str(r[0]) for r in rows}
+            # Create a restricted role that RLS actually applies to.
+            await db.execute(text(f"CREATE ROLE {role} NOSUPERUSER NOBYPASSRLS"))
+            await db.execute(text(f"GRANT SELECT ON memories TO {role}"))
+
+            try:
+                # Read as the restricted role, scoped to group A.
+                await db.execute(text(f"SET ROLE {role}"))
+                await db.execute(text("SELECT set_config('app.current_namespace', :ns, true)"), {"ns": ns})
+                await db.execute(text("SELECT set_config('agentmem.barrier_group', :g, true)"), {"g": group_a})
+                rows = (await db.execute(
+                    text("SELECT id FROM memories WHERE namespace = :ns"), {"ns": ns}
+                )).fetchall()
+                visible = {str(r[0]) for r in rows}
+            finally:
+                await db.execute(text("RESET ROLE"))
+                # Roll back everything — the inserts, CREATE ROLE, and GRANT are all
+                # transactional, so nothing (including the role) persists. This also
+                # avoids DROP ROLE failing while the role still holds the GRANT.
+                await db.rollback()
 
         assert id_a in visible, "group_a must see its own memory"
         assert id_b not in visible, (
-            "RLS FAILED: group_a can read group_b memory â€” "
-            "FORCE ROW LEVEL SECURITY or the IS NULL policy is broken"
+            "RLS FAILED: group_a read a group_b memory — the barrier_isolation "
+            "policy is not RESTRICTIVE, or the barrier session var was not set"
         )
 
     async def test_unbarriered_memories_visible_to_all(self, pg_engine):

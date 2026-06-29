@@ -95,7 +95,22 @@ async def _get_barrier_group(db: AsyncSession, namespace: str, agent_id: str) ->
     )
     result = await db.execute(stmt)
     row = result.scalar_one_or_none()
-    return row.group_name if row else None
+    group = row.group_name if row else None
+
+    # Engage the PostgreSQL RLS barrier policy by setting the session variable the
+    # RESTRICTIVE barrier_isolation policy reads (migration 0013). An unbarriered
+    # agent sets '' and sees every row in its namespace (compliance-officer view);
+    # a group-scoped agent sees only NULL-barrier (shared) and same-group rows.
+    # No-op on SQLite (no set_config) — those tests rely on app-layer filtering.
+    try:
+        await db.execute(
+            text("SELECT set_config('agentmem.barrier_group', :bg, true)"),
+            {"bg": group or ""},
+        )
+    except Exception:
+        pass
+
+    return group
 
 
 async def _resolve_subject_key(
