@@ -340,3 +340,51 @@ class NamespacePolicy(Base):
     legal_hold = Column(Boolean, nullable=False, default=False)
     stripe_customer_id = Column(String, nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+
+class Relationship(Base):
+    """
+    Bitemporal relationship edge between two entities — the knowledge-graph layer.
+
+    A directed triplet ``src_entity --rel_type--> dst_entity`` that inherits the
+    same temporal, audit, and information-barrier machinery as ``memories``:
+
+      valid_from / valid_to   — system-time window the edge was believed (Graphiti's
+                                valid_at / invalid_at). NULL valid_to = currently live.
+      event_time              — business time the relationship became true.
+      invalidated_by          — the edge that superseded this one (exclusive rels).
+      barrier_group           — RLS information-barrier tag, identical semantics to
+                                memories: an edge in another barrier is invisible.
+      subject_id              — optional data-subject link so crypto-shred reaches edges.
+
+    Powers compliance graph queries that are inherently relational:
+      legal      — conflict-of-interest reachability (ABA 1.7/1.9)
+      finance    — related-party / beneficial-ownership within N hops (SEC, AML/KYC)
+      healthcare — care-network and referral-pattern traversal (anti-kickback)
+    """
+    __tablename__ = "relationships"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    namespace = Column(String, nullable=False, index=True)
+    agent_id = Column(String, nullable=False, index=True)
+
+    src_entity = Column(String, nullable=False, index=True)
+    rel_type = Column(String, nullable=False, index=True)
+    dst_entity = Column(String, nullable=False, index=True)
+
+    event_time = Column(DateTime(timezone=True), nullable=False)
+    ingestion_time = Column(DateTime(timezone=True), nullable=False, default=_now)
+    valid_from = Column(DateTime(timezone=True), nullable=False)
+    valid_to = Column(DateTime(timezone=True), nullable=True)
+    invalidated_by = Column(UUID(as_uuid=True), ForeignKey("relationships.id"), nullable=True)
+
+    barrier_group = Column(String, nullable=True, index=True)
+    subject_id = Column(String, nullable=True, index=True)
+    source = Column(String, nullable=True)
+    metadata_ = Column("metadata", JSON, nullable=False, server_default="{}")
+    content_hash = Column(String, nullable=False, index=True)
+
+    __table_args__ = (
+        Index("ix_rel_ns_agent_src", "namespace", "agent_id", "src_entity"),
+        Index("ix_rel_ns_agent_dst", "namespace", "agent_id", "dst_entity"),
+    )

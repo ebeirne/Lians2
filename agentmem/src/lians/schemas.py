@@ -398,3 +398,71 @@ class AuditExportResult(BaseModel):
     chain_status: Optional[str] = None   # "ok" | "tampered" | None (not verified)
     chain_violations: Optional[list[AuditChainViolation]] = None
     events: list[AuditExportRow]
+
+
+# ── Relationship graph ──────────────────────────────────────────────────────────
+
+
+class RelateRequest(BaseModel):
+    """Assert a relationship edge: src_entity --rel_type--> dst_entity."""
+    agent_id: str
+    src_entity: str
+    rel_type: str
+    dst_entity: str
+    event_time: datetime
+    exclusive: bool = False              # invalidate other live src--rel_type--> edges
+    subject_id: Optional[str] = None
+    source: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    normalize: bool = False              # collapse company/ISIN/CUSIP to canonical ticker
+
+
+class UnrelateRequest(BaseModel):
+    agent_id: str
+    src_entity: str
+    rel_type: str
+    dst_entity: str
+    event_time: Optional[datetime] = None
+    normalize: bool = False
+
+
+class EdgeOut(BaseModel):
+    id: str
+    src: str
+    rel_type: str
+    dst: str
+    event_time: Optional[str]
+    valid_to: Optional[str]
+    source: Optional[str]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RelateResult(BaseModel):
+    id: UUID
+    src_entity: str
+    rel_type: str
+    dst_entity: str
+    event_time: datetime
+    valid_to: Optional[datetime]
+
+
+class NeighborOut(BaseModel):
+    entity: str
+    depth: int
+
+
+class NeighborsResult(BaseModel):
+    entity: str
+    depth: int
+    as_of: Optional[str]
+    neighbors: list[NeighborOut]
+    direct_edges: list[EdgeOut]
+
+
+class PathResult(BaseModel):
+    src: str
+    dst: str
+    connected: bool
+    hops: int
+    as_of: Optional[str]
+    path: list[EdgeOut]

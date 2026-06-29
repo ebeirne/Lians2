@@ -382,6 +382,77 @@ class LiansMemoryHarness:
             remembered=remembered,
         )
 
+    # ── Relationship graph ────────────────────────────────────────────────────
+
+    def relate(
+        self,
+        src_entity: str,
+        rel_type: str,
+        dst_entity: str,
+        *,
+        event_time: Optional[datetime] = None,
+        exclusive: bool = False,
+        subject_id: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
+        normalize: Optional[bool] = None,
+    ) -> dict:
+        """
+        Assert a relationship edge for this agent's graph.
+
+        ``normalize`` defaults to True for the finance domain (so company/ISIN/
+        CUSIP forms collapse to one node) and False otherwise.
+        """
+        self._require("relate")
+        return self.client.relate(  # type: ignore[attr-defined]
+            agent_id=self.agent_id,
+            src_entity=src_entity,
+            rel_type=rel_type,
+            dst_entity=dst_entity,
+            event_time=event_time or _now(),
+            exclusive=exclusive,
+            subject_id=subject_id or self.subject_id,
+            source=self.source,
+            metadata=self._scoped_metadata(metadata),
+            normalize=self.domain == "finance" if normalize is None else normalize,
+        )
+
+    def neighbors(self, entity: str, **kwargs: Any) -> dict:
+        """Entities connected to ``entity`` within N hops (see client.neighbors)."""
+        self._require("neighbors")
+        return self.client.neighbors(agent_id=self.agent_id, entity=entity, **kwargs)  # type: ignore[attr-defined]
+
+    def path(self, src_entity: str, dst_entity: str, **kwargs: Any) -> dict:
+        """Shortest connection between two entities (COI / related-party query)."""
+        self._require("path")
+        return self.client.path(  # type: ignore[attr-defined]
+            agent_id=self.agent_id, src_entity=src_entity, dst_entity=dst_entity, **kwargs
+        )
+
+    def recall_near(
+        self,
+        query: str,
+        near_entity: str,
+        *,
+        near_key: str = "ticker",
+        k: Optional[int] = None,
+        as_of: Optional[datetime] = None,
+    ) -> list[RecalledMemory]:
+        """
+        Recall with graph-proximity reranking — facts about entities near
+        ``near_entity`` in the relationship graph are boosted.
+        """
+        self._require("recall_near")
+        result = self.client.recall_near(  # type: ignore[attr-defined]
+            agent_id=self.agent_id,
+            query=query,
+            near_entity=near_entity,
+            near_key=near_key,
+            k=k if k is not None else self.recall_k,
+            as_of=as_of,
+        )
+        memories = result.get("memories", []) if isinstance(result, dict) else []
+        return [RecalledMemory.from_dict(m) for m in memories]
+
     # ── Compliance pass-throughs ──────────────────────────────────────────────
 
     def snapshot(self, as_of: datetime, **kwargs: Any) -> dict:

@@ -645,6 +645,128 @@ class LocalLiansClient:
             "Use AgentMemClient (HTTP) instead of LocalAgentMemClient."
         )
 
+    # â”€â”€ Relationship graph â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    def relate(
+        self,
+        agent_id: str,
+        src_entity: str,
+        rel_type: str,
+        dst_entity: str,
+        event_time: datetime,
+        exclusive: bool = False,
+        subject_id: Optional[str] = None,
+        source: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
+        normalize: bool = False,
+    ) -> dict:
+        """Assert a relationship edge: ``src_entity --rel_type--> dst_entity``."""
+        return self._run(self._async_relate(
+            agent_id=agent_id, src_entity=src_entity, rel_type=rel_type,
+            dst_entity=dst_entity, event_time=event_time, exclusive=exclusive,
+            subject_id=subject_id, source=source, metadata=metadata or {},
+            normalize=normalize,
+        ))
+
+    async def _async_relate(self, **kwargs) -> dict:
+        from src.lians import graph_service
+        async with self._session_factory() as db:
+            edge = await graph_service.relate(db, self._namespace, **kwargs)
+            return {
+                "id": str(edge.id),
+                "src_entity": edge.src_entity,
+                "rel_type": edge.rel_type,
+                "dst_entity": edge.dst_entity,
+                "event_time": edge.event_time.isoformat(),
+                "valid_to": edge.valid_to.isoformat() if edge.valid_to else None,
+            }
+
+    def unrelate(
+        self,
+        agent_id: str,
+        src_entity: str,
+        rel_type: str,
+        dst_entity: str,
+        event_time: Optional[datetime] = None,
+        normalize: bool = False,
+    ) -> dict:
+        """Invalidate a live edge (sets ``valid_to``). Returns ``{"invalidated": N}``."""
+        return self._run(self._async_unrelate(
+            agent_id=agent_id, src_entity=src_entity, rel_type=rel_type,
+            dst_entity=dst_entity, event_time=event_time, normalize=normalize,
+        ))
+
+    async def _async_unrelate(self, **kwargs) -> dict:
+        from src.lians import graph_service
+        async with self._session_factory() as db:
+            count = await graph_service.unrelate(db, self._namespace, **kwargs)
+            return {"invalidated": count}
+
+    def neighbors(
+        self,
+        agent_id: str,
+        entity: str,
+        depth: int = 1,
+        as_of: Optional[datetime] = None,
+        rel_types: Optional[list[str]] = None,
+        direction: str = "any",
+        normalize: bool = False,
+    ) -> dict:
+        """Entities within ``depth`` hops of ``entity`` (optional point-in-time ``as_of``)."""
+        return self._run(self._async_neighbors(
+            agent_id=agent_id, entity=entity, depth=depth, as_of=as_of,
+            rel_types=rel_types, direction=direction, normalize=normalize,
+        ))
+
+    async def _async_neighbors(self, **kwargs) -> dict:
+        from src.lians import graph_service
+        async with self._session_factory() as db:
+            return await graph_service.neighbors(db, self._namespace, **kwargs)
+
+    def path(
+        self,
+        agent_id: str,
+        src_entity: str,
+        dst_entity: str,
+        max_depth: int = 4,
+        as_of: Optional[datetime] = None,
+        rel_types: Optional[list[str]] = None,
+        normalize: bool = False,
+    ) -> dict:
+        """
+        Shortest connection between two entities â€” the conflict-of-interest /
+        related-party reachability query. ``{"connected": False}`` is the clean result.
+        """
+        return self._run(self._async_path(
+            agent_id=agent_id, src_entity=src_entity, dst_entity=dst_entity,
+            max_depth=max_depth, as_of=as_of, rel_types=rel_types, normalize=normalize,
+        ))
+
+    async def _async_path(self, **kwargs) -> dict:
+        from src.lians import graph_service
+        async with self._session_factory() as db:
+            return await graph_service.path(db, self._namespace, **kwargs)
+
+    def recall_near(
+        self,
+        agent_id: str,
+        query: str,
+        near_entity: str,
+        near_key: str = "ticker",
+        k: int = 5,
+        as_of: Optional[datetime] = None,
+        filters: Optional[dict[str, Any]] = None,
+    ) -> dict:
+        """
+        Recall with graph-proximity reranking: results about entities near
+        ``near_entity`` in the relationship graph are boosted. ``near_key`` is the
+        metadata field holding each memory's entity (default ``ticker``).
+        """
+        merged = dict(filters or {})
+        merged["_near_entity"] = near_entity
+        merged["_near_key"] = near_key
+        return self.recall(agent_id=agent_id, query=query, k=k, as_of=as_of, filters=merged)
+
     def register_webhook(self, *args: Any, **kwargs: Any) -> dict:  # noqa: ARG002
         """Not available in local mode â€” webhooks require an HTTP server."""
         raise NotImplementedError(

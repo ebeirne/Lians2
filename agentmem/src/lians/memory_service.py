@@ -349,8 +349,17 @@ async def recall_memories(
 
         settings = get_settings()
 
+        # Graph-proximity reranking (opt-in via filters). Pull the anchor params
+        # out of `filters` BEFORE they reach the metadata matcher, and bypass the
+        # recall cache when present (results depend on the live graph).
+        near_entity: Optional[str] = None
+        near_key = "ticker"
+        if req.filters:
+            near_entity = req.filters.pop("_near_entity", None)
+            near_key = req.filters.pop("_near_key", "ticker")
+
         # Hot cache (Redis)
-        if settings.recall_cache_enabled and not req.as_of:
+        if settings.recall_cache_enabled and not req.as_of and not near_entity:
             cached = await get_cached_recall(
                 namespace, req.agent_id, req.query, req.as_of, req.k, req.filters
             )
@@ -433,6 +442,14 @@ async def recall_memories(
 
         span.set_attribute("result_count", len(results))
 
+        # Graph-proximity reranking: boost results whose entity sits near the
+        # anchor entity in the relationship graph (Graphiti-style node-distance).
+        if near_entity and results:
+            results = await _rerank_by_proximity(
+                db, namespace, req.agent_id, near_entity, near_key, results, req.as_of
+            )
+            span.set_attribute("graph_rerank", True)
+
         # hybrid_recall always returns Memory objects (Change 1 fetch-back ensures this)
         with tracer.start_as_current_span("recall.assemble"):
             memories_out: list[MemoryOut] = [
@@ -466,7 +483,7 @@ async def recall_memories(
                 customer_id, 1, f"r:{recall_log.id}",
             )
 
-        if settings.recall_cache_enabled and not req.as_of:
+        if settings.recall_cache_enabled and not req.as_of and not near_entity:
             await set_cached_recall(
                 namespace, req.agent_id, req.query, req.as_of, req.k, req.filters,
                 result.model_dump_json(),
@@ -476,6 +493,47 @@ async def recall_memories(
         record_recall(namespace, router="semantic", cache_hit=False)
         observe_recall(namespace, _time.perf_counter() - _recall_t0)
         return result
+
+
+async def _rerank_by_proximity(
+    db: AsyncSession,
+    namespace: str,
+    agent_id: str,
+    anchor: str,
+    near_key: str,
+    results: list,
+    as_of: Optional[datetime],
+) -> list:
+    """
+    Reorder recall results by graph proximity to ``anchor``.
+
+    Each result's entity is read from metadata[``near_key``]; its hop-distance to
+    the anchor in the relationship graph yields an additive proximity bonus
+    (1/(1+distance)), so closely-connected facts rise without displacing strong
+    semantic matches. Unreachable entities get no bonus — pure semantic order.
+    """
+    from .graph_service import entity_distances, canon_entity
+
+    candidates: set[str] = set()
+    for mem, _score, _content in results:
+        val = (mem.metadata_ or {}).get(near_key)
+        if val:
+            candidates.add(str(val))
+    if not candidates:
+        return results
+
+    distances = await entity_distances(
+        db, namespace, agent_id, anchor, candidates, as_of=as_of
+    )
+
+    def _key(item):
+        mem, score, _content = item
+        val = (mem.metadata_ or {}).get(near_key)
+        dist = distances.get(canon_entity(str(val))) if val else None
+        bonus = 1.0 / (1.0 + dist) if dist is not None else 0.0
+        return score + bonus
+
+    return sorted(results, key=_key, reverse=True)
 
 
 def _fire_recall_audit(db: AsyncSession, namespace: str, req: RecallRequest, memories: list) -> None:

@@ -317,6 +317,50 @@ class LiansClient:
             self._async.backtest_check(agent_id=agent_id, simulation_as_of=simulation_as_of)
         )
 
+    # ── Relationship graph ──────────────────────────────────────────────────────
+
+    def relate(self, agent_id, src_entity, rel_type, dst_entity, event_time,
+               exclusive=False, subject_id=None, source=None, metadata=None,
+               normalize=False) -> dict:
+        """Assert a relationship edge ``src_entity --rel_type--> dst_entity``."""
+        return self._loop.run_until_complete(self._async.relate(
+            agent_id=agent_id, src_entity=src_entity, rel_type=rel_type,
+            dst_entity=dst_entity, event_time=event_time, exclusive=exclusive,
+            subject_id=subject_id, source=source, metadata=metadata, normalize=normalize,
+        ))
+
+    def unrelate(self, agent_id, src_entity, rel_type, dst_entity,
+                 event_time=None, normalize=False) -> dict:
+        """Invalidate a live edge (sets ``valid_to``)."""
+        return self._loop.run_until_complete(self._async.unrelate(
+            agent_id=agent_id, src_entity=src_entity, rel_type=rel_type,
+            dst_entity=dst_entity, event_time=event_time, normalize=normalize,
+        ))
+
+    def neighbors(self, agent_id, entity, depth=1, as_of=None, rel_types=None,
+                  direction="any", normalize=False) -> dict:
+        """Entities within ``depth`` hops of ``entity`` (optional ``as_of``)."""
+        return self._loop.run_until_complete(self._async.neighbors(
+            agent_id=agent_id, entity=entity, depth=depth, as_of=as_of,
+            rel_types=rel_types, direction=direction, normalize=normalize,
+        ))
+
+    def path(self, agent_id, src_entity, dst_entity, max_depth=4, as_of=None,
+             rel_types=None, normalize=False) -> dict:
+        """Shortest connection between two entities — the COI / related-party query."""
+        return self._loop.run_until_complete(self._async.path(
+            agent_id=agent_id, src_entity=src_entity, dst_entity=dst_entity,
+            max_depth=max_depth, as_of=as_of, rel_types=rel_types, normalize=normalize,
+        ))
+
+    def recall_near(self, agent_id, query, near_entity, near_key="ticker",
+                    k=5, as_of=None, filters=None) -> dict:
+        """Recall with graph-proximity reranking around ``near_entity``."""
+        return self._loop.run_until_complete(self._async.recall_near(
+            agent_id=agent_id, query=query, near_entity=near_entity,
+            near_key=near_key, k=k, as_of=as_of, filters=filters,
+        ))
+
     # ── Conflicts ──────────────────────────────────────────────────────────────
 
     def list_conflicts(

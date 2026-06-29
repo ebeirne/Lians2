@@ -421,6 +421,98 @@ class AsyncLiansClient:
             "simulation_as_of": simulation_as_of.isoformat(),
         })
 
+    # ── Relationship graph ──────────────────────────────────────────────────────
+
+    async def relate(
+        self,
+        agent_id: str,
+        src_entity: str,
+        rel_type: str,
+        dst_entity: str,
+        event_time: datetime,
+        exclusive: bool = False,
+        subject_id: Optional[str] = None,
+        source: Optional[str] = None,
+        metadata: Optional[dict] = None,
+        normalize: bool = False,
+    ) -> dict:
+        """Assert a relationship edge ``src_entity --rel_type--> dst_entity``."""
+        return await self._req("POST", "/v1/graph/relate", json={
+            "agent_id": agent_id, "src_entity": src_entity, "rel_type": rel_type,
+            "dst_entity": dst_entity, "event_time": event_time.isoformat(),
+            "exclusive": exclusive, "subject_id": subject_id, "source": source,
+            "metadata": metadata or {}, "normalize": normalize,
+        })
+
+    async def unrelate(
+        self,
+        agent_id: str,
+        src_entity: str,
+        rel_type: str,
+        dst_entity: str,
+        event_time: Optional[datetime] = None,
+        normalize: bool = False,
+    ) -> dict:
+        """Invalidate a live edge (sets ``valid_to``). Returns ``{"invalidated": N}``."""
+        return await self._req("POST", "/v1/graph/unrelate", json={
+            "agent_id": agent_id, "src_entity": src_entity, "rel_type": rel_type,
+            "dst_entity": dst_entity,
+            "event_time": event_time.isoformat() if event_time else None,
+            "normalize": normalize,
+        })
+
+    async def neighbors(
+        self,
+        agent_id: str,
+        entity: str,
+        depth: int = 1,
+        as_of: Optional[datetime] = None,
+        rel_types: Optional[list[str]] = None,
+        direction: str = "any",
+        normalize: bool = False,
+    ) -> dict:
+        """Entities within ``depth`` hops of ``entity`` (optional point-in-time ``as_of``)."""
+        return await self._req("GET", "/v1/graph/neighbors", params={
+            "entity": entity, "agent_id": agent_id, "depth": depth,
+            "direction": direction, "normalize": normalize,
+            "as_of": as_of.isoformat() if as_of else None,
+            "rel_type": rel_types,
+        })
+
+    async def path(
+        self,
+        agent_id: str,
+        src_entity: str,
+        dst_entity: str,
+        max_depth: int = 4,
+        as_of: Optional[datetime] = None,
+        rel_types: Optional[list[str]] = None,
+        normalize: bool = False,
+    ) -> dict:
+        """Shortest connection between two entities — the COI / related-party query."""
+        return await self._req("GET", "/v1/graph/path", params={
+            "src": src_entity, "dst": dst_entity, "agent_id": agent_id,
+            "max_depth": max_depth, "normalize": normalize,
+            "as_of": as_of.isoformat() if as_of else None,
+            "rel_type": rel_types,
+        })
+
+    async def recall_near(
+        self,
+        agent_id: str,
+        query: str,
+        near_entity: str,
+        near_key: str = "ticker",
+        k: int = 5,
+        as_of: Optional[datetime] = None,
+        filters: Optional[dict] = None,
+    ) -> dict:
+        """Recall with graph-proximity reranking around ``near_entity``."""
+        merged = dict(filters or {})
+        merged["_near_entity"] = near_entity
+        merged["_near_key"] = near_key
+        return await self.recall(agent_id=agent_id, query=query, k=k, as_of=as_of, filters=merged)
+
     # ── Conflicts ──────────────────────────────────────────────────────────────
 
     async def list_conflicts(

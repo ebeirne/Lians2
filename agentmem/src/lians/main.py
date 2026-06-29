@@ -21,6 +21,7 @@ from .api.routes_webhooks import router as webhooks_router
 from .api.routes_compliance import router as compliance_router
 from .api.routes_backtest import router as backtest_router
 from .api.routes_snapshot import router as snapshot_router
+from .api.routes_graph import router as graph_router
 from .telemetry import instrument_fastapi, instrument_sqlalchemy
 from .middleware import (
     setup_logging,
@@ -222,6 +223,7 @@ app.include_router(webhooks_router)
 app.include_router(compliance_router)
 app.include_router(backtest_router)
 app.include_router(snapshot_router)
+app.include_router(graph_router)
 app.include_router(metrics_router)
 
 

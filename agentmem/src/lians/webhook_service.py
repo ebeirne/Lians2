@@ -49,8 +49,12 @@ MEMORY_SUPERSEDED   = "memory.superseded"
 MEMORY_CONFLICT     = "memory.conflict"
 MEMORY_ERASED       = "memory.erased"
 SUPERSESSION_REJECTED = "supersession.rejected"
+RELATIONSHIP_INVALIDATED = "relationship.invalidated"
 
-ALL_EVENTS = {MEMORY_SUPERSEDED, MEMORY_CONFLICT, MEMORY_ERASED, SUPERSESSION_REJECTED}
+ALL_EVENTS = {
+    MEMORY_SUPERSEDED, MEMORY_CONFLICT, MEMORY_ERASED, SUPERSESSION_REJECTED,
+    RELATIONSHIP_INVALIDATED,
+}
 
 
 # ── HMAC signing ──────────────────────────────────────────────────────────────

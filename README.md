@@ -172,6 +172,39 @@ Runnable end-to-end demo: [`agentmem/examples/harness_demo.py`](agentmem/example
 
 ---
 
+## Relationship graph — compliance questions that are inherently relational
+
+Some compliance checks *are* graph queries. Lians stores **bitemporal relationship
+edges** alongside facts — same audit chain, same information barriers, no graph
+database — so you can answer them point-in-time:
+
+- **Legal** — conflict-of-interest reachability (ABA 1.7/1.9): is an attorney
+  connected to an adverse party?
+- **Finance** — related-party / beneficial-ownership (SEC, AML/KYC): is a
+  counterparty within N hops of a restricted entity?
+- **Healthcare** — care-network / referral-pattern (anti-kickback) analysis.
+
+```python
+mem.relate("analyst-1", src_entity="Attorney", rel_type="represented",
+           dst_entity="ClientX", event_time=datetime(2026, 1, 1, tzinfo=timezone.utc))
+mem.relate("analyst-1", src_entity="ClientX", rel_type="adverse_to",
+           dst_entity="PartyY", event_time=datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+# Conflict-of-interest check — is there a connection, and through what?
+path = mem.path("analyst-1", src_entity="Attorney", dst_entity="PartyY")
+# → {"connected": True, "hops": 2, "path": [...]}
+
+# Point-in-time: who was connected on the day of the trade?
+mem.neighbors("analyst-1", entity="FundA", depth=2, as_of=datetime(2025, 6, 1, tzinfo=timezone.utc))
+
+# Graph-proximity reranking — boost recalls about entities near an anchor
+mem.recall_near("analyst-1", query="earnings", near_entity="FundA", near_key="ticker")
+```
+
+Endpoints: `POST /v1/graph/relate` · `/v1/graph/unrelate` · `GET /v1/graph/neighbors` · `/v1/graph/path` (all `as_of`-capable). Inspired by [Zep/Graphiti](docs/compare-zep.md), built on our compliance spine.
+
+---
+
 ## Agent integrations — Claude Code, Codex, MCP
 
 Give any coding agent persistent, compliance-grade memory:
@@ -204,7 +237,7 @@ Superseded facts are excluded at the database layer. Every write is recorded in 
 | GDPR crypto-shred with audit survival | ✓ | ✗ | ✗ |
 | Information barriers (DB-layer RLS) | ✓ | ✗ | ✗ |
 
-→ Full benchmark numbers: [docs/benchmark.md](docs/benchmark.md) · Feature-by-feature breakdown: [docs/compare-mem0.md](docs/compare-mem0.md)
+→ Full benchmark numbers: [docs/benchmark.md](docs/benchmark.md) · Feature-by-feature breakdown: [vs mem0](docs/compare-mem0.md) · [vs Zep/Graphiti](docs/compare-zep.md)
 
 ---
 
