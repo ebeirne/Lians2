@@ -29,12 +29,18 @@ and **access** (who can read what, and is it provably controlled?).
 | Lookahead-bias proof | None | `backtest_check` contamination report |
 | Regulatory export | None documented | `compliance_report`, audit export (SEC/FINRA/CFTC) |
 | Domain modeling | Generic | Finance / healthcare / legal adapters (entity normalization) |
+| Language SDKs | Python, TypeScript (2) | Python, TypeScript, **Go, Java, C** (5) |
 
-Where mem0 leads: breadth of out-of-the-box framework integrations, a polished
-hosted onboarding, a browser extension, and strong general-chat benchmark scores
-(LoCoMo / LongMemEval). If you are building a consumer assistant, that breadth is
-real value. If you are building for a bank, hospital, or law firm, the rows above
-are the ones that get you through procurement and audit.
+Where mem0 leads: breadth of out-of-the-box *framework* integrations (LangChain,
+CrewAI, …), a polished hosted onboarding, a browser extension, and strong
+general-chat benchmark scores (LoCoMo / LongMemEval). If you are building a consumer
+assistant, that breadth is real value. If you are building for a bank, hospital, or
+law firm, the rows above are the ones that get you through procurement and audit.
+
+On *language* reach, though, Lians is ahead: mem0 ships Python and TypeScript;
+Lians ships **Python, TypeScript, Go, Java, and C** — the two of those that matter
+most to regulated buyers (the JVM that runs bank/insurer risk systems, and native
+C for low-latency and embedded) are exactly the ones mem0 lacks.
 
 ---
 

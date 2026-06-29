@@ -32,15 +32,21 @@ design worth adopting — on our terms, for regulated work.
 | Access control | None in Graphiti; Zep Cloud only | Scoped keys + PostgreSQL RLS information barriers |
 | Backend | Neo4j / FalkorDB / Neptune (graph DB) | Postgres 16 + pgvector (no extra infra) |
 | Determinism | Extraction-quality dependent | Reproducible; same input → same supersession |
+| Language SDKs | Python, TypeScript, Go (3) | Python, TypeScript, Go, **Java, C** (5) |
 
-**Where Zep/Graphiti leads:** the graph itself. Relationship triplets unlock
-queries Lians can't answer today — "who is connected to this entity, and how?",
-N-hop traversal, community structure, and graph-proximity reranking. Their LLM
-extraction also ingests messy unstructured text with less caller effort.
+**Where Zep/Graphiti leads:** the *depth* of the graph — automatic LLM entity/edge
+extraction from messy unstructured text, community detection, and evolving entity
+summaries. Lians now has the relationship graph itself (edges, N-hop traversal,
+point-in-time `path`, node-distance reranking — see §4), but writes edges
+explicitly/deterministically rather than inferring them, and doesn't yet do
+communities or auto-summaries.
 
 **Where Lians leads:** everything a regulator asks about — tamper-evident audit,
 provable erasure, DB-layer barriers, deterministic and reproducible updates, and
-zero extra infrastructure (no graph DB to run, secure, and certify).
+zero extra infrastructure (no graph DB to run, secure, and certify) — **plus
+language reach**: Zep ships Python, TypeScript, and Go; Lians ships those three
+*and* Java and C, the two that regulated buyers (JVM risk systems, native
+low-latency/embedded) most need and that neither Zep nor mem0 offers.
 
 ---
 
@@ -143,7 +149,7 @@ the codebase as an additive layer — no new datastore, full compliance spine:
 - **Graph-proximity reranking** (`recall_near` / `_near_entity` filter): recall
   results about entities near the query's anchor entity get a node-distance boost,
   Graphiti-style — without displacing strong semantic matches.
-- SDK (`relate`/`unrelate`/`neighbors`/`path`/`recall_near` on all three clients) +
+- SDK (`relate`/`unrelate`/`neighbors`/`path`/`recall_near` on the Python clients) +
   harness helpers + `entity normalization` reuse so `Apple Inc.`/`AAPL`/ISIN
   collapse to one node when `normalize=True`.
 
