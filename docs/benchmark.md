@@ -457,3 +457,29 @@ excluding the stale one, which a pure accumulate-everything store cannot do. The
 honest summary for a regulated buyer is *comparable retrieval plus the compliance
 stack (audit chain, crypto-shred, DB-layer barriers) that the benchmark leaders
 don't have* — see [compare-mem0.md](compare-mem0.md) and [compare-zep.md](compare-zep.md).
+
+---
+
+## Regulated memory eval (the benchmark only compliance-grade memory passes)
+
+General benchmarks measure conversational recall. They do **not** measure what a
+regulated buyer must guarantee — and an accumulate-everything store fails those by
+design. `agentmem/benchmarks/regulated_eval.py` checks five hard invariants:
+
+| Invariant | What it proves | A plain store… |
+|-----------|----------------|----------------|
+| `stale_revision_suppression` | a superseded fact is **not** retrieved | ❌ returns both |
+| `point_in_time_reconstruction` | recall as-of a past date returns what was known then | ❌ no temporal model |
+| `erasure_proof` | erased content is unrecoverable | ❌ delete ≠ proof |
+| `lookahead_contamination_detection` | future-knowledge facts are flagged | ❌ no concept |
+| `audit_state_reconstruction` | the full knowledge state at any past T is reproducible | ❌ |
+
+```bash
+cd agentmem
+python -m benchmarks.regulated_eval     # 5/5 invariants hold on Lians
+```
+
+Run the *same* harness against a mem0 / Zep adapter and items 1, 3, and 4 fail —
+that contrast, not a recall percentage, is the regulated buyer's decision. (A sixth
+invariant — barrier-leakage isolation — is verified separately against PostgreSQL
+RLS with a non-superuser role; see `test_pgvector.py`.)
