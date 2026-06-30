@@ -89,13 +89,20 @@ def _compute_importance(event_time: datetime, caller_salience: float) -> float:
     return round(0.4 * recency + 0.6 * caller_salience, 4)
 
 
-async def _get_barrier_group(db: AsyncSession, namespace: str, agent_id: str) -> Optional[str]:
-    stmt = select(AgentBarrierGroup).where(
-        and_(AgentBarrierGroup.namespace == namespace, AgentBarrierGroup.agent_id == agent_id)
-    )
-    result = await db.execute(stmt)
-    row = result.scalar_one_or_none()
-    group = row.group_name if row else None
+async def _get_barrier_group(
+    db: AsyncSession, namespace: str, agent_id: str, override: Optional[str] = None
+) -> Optional[str]:
+    if override is not None:
+        # The calling API key is barrier-scoped (SSO gateway picked it from the
+        # caller's IdP group) — the key's barrier is authoritative, no lookup.
+        group: Optional[str] = override
+    else:
+        stmt = select(AgentBarrierGroup).where(
+            and_(AgentBarrierGroup.namespace == namespace, AgentBarrierGroup.agent_id == agent_id)
+        )
+        result = await db.execute(stmt)
+        row = result.scalar_one_or_none()
+        group = row.group_name if row else None
 
     # Engage the PostgreSQL RLS barrier policy by setting the session variable the
     # RESTRICTIVE barrier_isolation policy reads (migration 0013). An unbarriered
@@ -182,6 +189,8 @@ async def add_memory(
     db: AsyncSession,
     namespace: str,
     req: MemoryAdd,
+    *,
+    barrier_override: Optional[str] = None,
 ) -> MemoryOut:
     _add_t0 = _time.perf_counter()
     with tracer.start_as_current_span("memory.add") as span:
@@ -207,7 +216,7 @@ async def add_memory(
         async with in_process_lock:
             await _acquire_pg_advisory_lock(db, namespace, req.agent_id)
 
-            barrier_group = await _get_barrier_group(db, namespace, req.agent_id)
+            barrier_group = await _get_barrier_group(db, namespace, req.agent_id, override=barrier_override)
 
             # Change 3: pass a pre-generated UUID so the async LLM worker can
             # reference the new memory before flush assigns the DB id.
@@ -355,6 +364,8 @@ async def add_memory_idempotent(
     namespace: str,
     req: MemoryAdd,
     idempotency_key: Optional[str],
+    *,
+    barrier_override: Optional[str] = None,
 ) -> MemoryOut:
     """
     Idempotent wrapper around :func:`add_memory`.
@@ -368,7 +379,7 @@ async def add_memory_idempotent(
     server-side but whose response was lost to a network blip is not duplicated.
     """
     if not idempotency_key:
-        return await add_memory(db, namespace, req)
+        return await add_memory(db, namespace, req, barrier_override=barrier_override)
 
     existing = await db.get(IdempotencyKey, (idempotency_key, namespace))
     if existing is not None:
@@ -378,7 +389,7 @@ async def add_memory_idempotent(
             from .ranking import _decrypt
             return _memory_to_out(mem, _decrypt(mem, subject_keys))
 
-    result = await add_memory(db, namespace, req)
+    result = await add_memory(db, namespace, req, barrier_override=barrier_override)
     db.add(IdempotencyKey(key=idempotency_key, namespace=namespace, memory_id=result.id))
     try:
         await db.commit()
@@ -404,6 +415,8 @@ async def assemble_context(
     db: AsyncSession,
     namespace: str,
     req: "ContextRequest",
+    *,
+    barrier_override: Optional[str] = None,
 ) -> "ContextResult":
     """
     Recall the relevant facts and assemble them into a token-budgeted, ready-to-
@@ -421,7 +434,7 @@ async def assemble_context(
     recall_req = RecallRequest(
         agent_id=req.agent_id, query=req.query, k=req.k, as_of=req.as_of, filters=filters,
     )
-    result = await recall_memories(db, namespace, recall_req)
+    result = await recall_memories(db, namespace, recall_req, barrier_override=barrier_override)
 
     lines = [req.header]
     used = _estimate_tokens(req.header)
@@ -453,6 +466,8 @@ async def recall_memories(
     db: AsyncSession,
     namespace: str,
     req: RecallRequest,
+    *,
+    barrier_override: Optional[str] = None,
 ) -> RecallResult:
     _recall_t0 = _time.perf_counter()
     with tracer.start_as_current_span("memory.recall") as span:
@@ -480,7 +495,7 @@ async def recall_memories(
                 mmr_lambda = 0.5
 
         # Hot cache (Redis)
-        if settings.recall_cache_enabled and not req.as_of and not near_entity and not rerank:
+        if settings.recall_cache_enabled and not req.as_of and not near_entity and not rerank and barrier_override is None:
             cached = await get_cached_recall(
                 namespace, req.agent_id, req.query, req.as_of, req.k, req.filters
             )
@@ -496,7 +511,7 @@ async def recall_memories(
             predicate_key = compute_predicate_key(req.filters)
             if predicate_key:
                 with tracer.start_as_current_span("recall.keyed_lookup") as ks:
-                    barrier_group = await _get_barrier_group(db, namespace, req.agent_id)
+                    barrier_group = await _get_barrier_group(db, namespace, req.agent_id, override=barrier_override)
                     live_fact = await keyed_lookup(
                         db, namespace, req.agent_id, predicate_key, barrier_group
                     )
@@ -529,22 +544,31 @@ async def recall_memories(
 
         with tracer.start_as_current_span("recall.load_keys"):
             subject_keys = await _load_namespace_subject_keys(db, namespace)
-            barrier_group = await _get_barrier_group(db, namespace, req.agent_id)
+            barrier_group = await _get_barrier_group(db, namespace, req.agent_id, override=barrier_override)
 
-        # Change 7: in-process working-set cache (present-time only)
+        # Change 7: in-process working-set cache (present-time only). The cache is
+        # keyed by (namespace, agent_id); a key-level barrier (SSO) can vary the
+        # barrier for the same agent, so bypass the cache when an override is in
+        # play to avoid serving one barrier's working set to another.
         live_facts_cache: Optional[list] = None
         if not req.as_of:
-            live_facts_cache = get_working_set(namespace, req.agent_id)
-            if live_facts_cache is None:
-                from .current_facts import fetch_working_set
+            from .current_facts import fetch_working_set
+            if barrier_override is not None:
                 with tracer.start_as_current_span("recall.prefetch_working_set"):
                     live_facts_cache = await fetch_working_set(
                         db, namespace, req.agent_id, barrier_group
                     )
-                set_working_set(namespace, req.agent_id, live_facts_cache)
-                span.set_attribute("working_set_cold", True)
             else:
-                span.set_attribute("working_set_cold", False)
+                live_facts_cache = get_working_set(namespace, req.agent_id)
+                if live_facts_cache is None:
+                    with tracer.start_as_current_span("recall.prefetch_working_set"):
+                        live_facts_cache = await fetch_working_set(
+                            db, namespace, req.agent_id, barrier_group
+                        )
+                    set_working_set(namespace, req.agent_id, live_facts_cache)
+                    span.set_attribute("working_set_cold", True)
+                else:
+                    span.set_attribute("working_set_cold", False)
 
         with tracer.start_as_current_span("recall.search"):
             results = await hybrid_recall(
@@ -612,7 +636,7 @@ async def recall_memories(
                 customer_id, 1, f"r:{recall_log.id}",
             )
 
-        if settings.recall_cache_enabled and not req.as_of and not near_entity:
+        if settings.recall_cache_enabled and not req.as_of and not near_entity and barrier_override is None:
             await set_cached_recall(
                 namespace, req.agent_id, req.query, req.as_of, req.k, req.filters,
                 result.model_dump_json(),

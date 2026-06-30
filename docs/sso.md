@@ -23,19 +23,32 @@ User ─▶ Reverse proxy / API gateway ──(OIDC/SAML)──▶ IdP
 This means **no IdP code in Lians**, SSO works with every provider, and revocation
 / MFA / conditional access stay in your IdP where security teams expect them.
 
-## Mapping IdP groups → Lians roles
+## Mapping IdP groups → namespace, role, and barrier
 
-Map IdP group claims to Lians API keys with the matching `role` (see RBAC):
+Each API key carries three things the gateway maps from the IdP group claim:
+`namespace` (tenant), `role` (scopes), and an optional **`barrier_group`** (the
+information-barrier wall). Provision one key per (namespace, role, barrier) and
+have the gateway select it from the authenticated group claim.
 
-| IdP group | Lians role | Effective scopes |
-|-----------|-----------|------------------|
-| `lians-owners` | `owner` | read, write, admin |
-| `lians-analysts` | `analyst` | read, write |
-| `lians-compliance` | `compliance` | read, admin |
-| `lians-viewers` | `readonly` | read |
+| IdP group | namespace | role → scopes | barrier_group |
+|-----------|-----------|---------------|---------------|
+| `acme-equity-research` | `acme` | `analyst` → read, write | `research` |
+| `acme-equity-trading` | `acme` | `analyst` → read, write | `trading` |
+| `acme-compliance` | `acme` | `compliance` → read, admin | _(none — sees all)_ |
+| `acme-viewers` | `acme` | `readonly` → read | `research` |
 
-Provision one API key per (team/namespace, role); the gateway selects the key from
-the authenticated group claim. Rotate keys on role changes; revoke on offboarding.
+When a key has a `barrier_group`, **every read and write under it is scoped to
+that wall at the database layer** (PostgreSQL RLS, migration 0013): a write is
+tagged with the barrier and a read can only see that barrier's rows plus shared
+(NULL-barrier) rows. So `acme-equity-research` and `acme-equity-trading` cannot see
+each other's memories even though they share a namespace — the Chinese wall is
+enforced below the application, driven entirely by the IdP group. A key with no
+`barrier_group` (compliance) sees everything in its namespace.
+
+This makes the **IdP group → namespace + role + barrier** chain end-to-end: the
+identity decision in your IdP determines tenancy, permission, *and* isolation,
+with no identity code in Lians. Rotate keys on role/desk changes; revoke on
+offboarding.
 
 ## Per-tenant isolation
 
