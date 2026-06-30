@@ -66,7 +66,9 @@ async def create_memory(
     if decision.risk_tags:
         req.metadata = {**(req.metadata or {}),
                         "_admission": {"action": "admit", "risk_tags": decision.risk_tags}}
-    return await add_memory_idempotent(db, auth.namespace, req, idempotency_key)
+    return await add_memory_idempotent(
+        db, auth.namespace, req, idempotency_key, barrier_override=auth.barrier_group,
+    )
 
 
 @router.post("/memories/batch", response_model=MemoryBatchResult)
@@ -158,7 +160,7 @@ async def recall(
     db: AsyncSession = Depends(get_db),
 ):
     auth.require("read")
-    return await recall_memories(db, auth.namespace, req)
+    return await recall_memories(db, auth.namespace, req, barrier_override=auth.barrier_group)
 
 
 @router.post("/context", response_model=ContextResult)
@@ -174,4 +176,4 @@ async def context(
     ``mmr: true`` for diversity reranking, and ``max_tokens`` to cap the budget.
     """
     auth.require("read")
-    return await assemble_context(db, auth.namespace, req)
+    return await assemble_context(db, auth.namespace, req, barrier_override=auth.barrier_group)

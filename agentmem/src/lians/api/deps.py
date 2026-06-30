@@ -39,9 +39,11 @@ def _effective_scopes(key_row: ApiKey) -> list[str]:
 
 
 class AuthContext:
-    def __init__(self, namespace: str, scopes: list[str]):
+    def __init__(self, namespace: str, scopes: list[str], barrier_group: Optional[str] = None):
         self.namespace = namespace
         self.scopes = scopes
+        # Information barrier the calling key is scoped to (None = unbarriered).
+        self.barrier_group = barrier_group
 
     def require(self, scope: str):
         if scope not in self.scopes:
@@ -101,4 +103,5 @@ async def get_auth(
     return AuthContext(
         namespace=key_row.namespace,
         scopes=_effective_scopes(key_row),
+        barrier_group=getattr(key_row, "barrier_group", None),
     )
