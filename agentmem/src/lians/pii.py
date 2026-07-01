@@ -20,8 +20,12 @@ async def get_or_create_subject_key(
     subject_id: str,
     namespace: str,
 ) -> bytes:
-    """Return the plaintext content key for a subject, creating it if necessary."""
-    row = await db.get(SubjectKey, subject_id)
+    """Return the plaintext content key for a subject, creating it if necessary.
+
+    Scoped by (namespace, subject_id): the same subject_id in two tenants is two
+    distinct keys, so one tenant can never read or shred another tenant's data.
+    """
+    row = await db.get(SubjectKey, (namespace, subject_id))
     if row is None:
         raw_key = generate_subject_key()
         wrapped = wrap_subject_key(raw_key)
@@ -43,9 +47,10 @@ async def get_or_create_subject_key(
 async def destroy_subject_key(
     db: AsyncSession,
     subject_id: str,
+    namespace: str,
 ) -> None:
-    """Crypto-shred: overwrite key with zeros, mark destroyed."""
-    row = await db.get(SubjectKey, subject_id)
+    """Crypto-shred: overwrite key with zeros, mark destroyed (this tenant only)."""
+    row = await db.get(SubjectKey, (namespace, subject_id))
     if row is None:
         return
     row.enc_key = b"\x00" * len(bytes(row.enc_key))

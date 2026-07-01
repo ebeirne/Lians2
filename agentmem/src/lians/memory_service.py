@@ -126,11 +126,11 @@ async def _resolve_subject_key(
     namespace: str,
 ) -> bytes:
     """Return plaintext DEK for subject, using cache (Change 6)."""
-    cached = get_cached_dek(subject_id)
+    cached = get_cached_dek(namespace, subject_id)
     if cached is not None:
         return cached
     key = await get_or_create_subject_key(db, subject_id, namespace)
-    cache_dek(subject_id, key)
+    cache_dek(namespace, subject_id, key)
     return key
 
 
@@ -146,13 +146,13 @@ async def _load_namespace_subject_keys(db: AsyncSession, namespace: str) -> dict
     rows = result.scalars().all()
     keys: dict[str, bytes] = {}
     for row in rows:
-        cached = get_cached_dek(row.subject_id)
+        cached = get_cached_dek(namespace, row.subject_id)
         if cached is not None:
             keys[row.subject_id] = cached
             continue
         try:
             plaintext = unwrap_subject_key(bytes(row.enc_key))
-            cache_dek(row.subject_id, plaintext)
+            cache_dek(namespace, row.subject_id, plaintext)
             keys[row.subject_id] = plaintext
         except Exception:
             pass
@@ -945,7 +945,7 @@ async def erase_subject(
             payload={"subject_id": subject_id, "request_ref": request_ref},
         )
 
-    await destroy_subject_key(db, subject_id)
+    await destroy_subject_key(db, subject_id, namespace)
 
     if memories:
         from .webhook_service import dispatch_event, MEMORY_ERASED
@@ -958,7 +958,7 @@ async def erase_subject(
     await db.commit()
 
     # Change 6: evict destroyed key from DEK cache
-    evict_dek(subject_id)
+    evict_dek(namespace, subject_id)
     # Change 7: invalidate session caches for all agents that had this subject's data
     for aid in agent_ids:
         invalidate_working_set(namespace, aid)

@@ -18,24 +18,26 @@ from __future__ import annotations
 
 from typing import Optional
 
-# subject_id -> plaintext 32-byte DEK
-_dek_cache: dict[str, bytes] = {}
+# (namespace, subject_id) -> plaintext 32-byte DEK.
+# The namespace is part of the key: subject_id is unique only within a tenant,
+# so a bare-subject_id cache would serve one tenant's DEK to another.
+_dek_cache: dict[tuple[str, str], bytes] = {}
 
 
-def get_cached_dek(subject_id: str) -> Optional[bytes]:
+def get_cached_dek(namespace: str, subject_id: str) -> Optional[bytes]:
     """Return the cached plaintext DEK, or None on cache miss."""
-    return _dek_cache.get(subject_id)
+    return _dek_cache.get((namespace, subject_id))
 
 
-def cache_dek(subject_id: str, key: bytes) -> None:
+def cache_dek(namespace: str, subject_id: str, key: bytes) -> None:
     """Store the plaintext DEK after unwrapping."""
-    _dek_cache[subject_id] = key
+    _dek_cache[(namespace, subject_id)] = key
 
 
-def evict_dek(subject_id: str) -> None:
+def evict_dek(namespace: str, subject_id: str) -> None:
     """Remove a destroyed subject's DEK from cache.
 
     Called immediately after ``destroy_subject_key()`` so subsequent decrypt
     attempts fail with InvalidTag rather than returning garbage.
     """
-    _dek_cache.pop(subject_id, None)
+    _dek_cache.pop((namespace, subject_id), None)

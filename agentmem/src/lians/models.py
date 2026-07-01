@@ -108,11 +108,16 @@ class Memory(Base):
 
 
 class SubjectKey(Base):
-    """Per-subject encryption keys — destroy to crypto-shred all their data."""
+    """Per-subject encryption keys — destroy to crypto-shred all their data.
+
+    Keyed by (namespace, subject_id): subject_id is only unique *within* a
+    tenant, so a bare subject_id PK would let two tenants share one DEK and let
+    one tenant's erase crypto-shred another's data. See migration 0019.
+    """
     __tablename__ = "subject_keys"
 
+    namespace = Column(String, primary_key=True)
     subject_id = Column(String, primary_key=True)
-    namespace = Column(String, nullable=False)
     enc_key = Column(LargeBinary, nullable=True)   # null after destruction
     created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
     destroyed_at = Column(DateTime(timezone=True), nullable=True)
