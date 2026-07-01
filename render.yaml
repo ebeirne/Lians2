@@ -30,7 +30,7 @@ services:
       - key: MASTER_ENCRYPTION_KEY
         generateValue: true  # base64 256-bit — decodes to 32 bytes; pinned forever
       - key: ADMIN_SECRET
-        generateValue: true
+        sync: false          # set this = the website's LIANS_ADMIN_SECRET
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: SUPERSESSION_LLM_STAGE
