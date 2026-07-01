@@ -5,6 +5,8 @@ Evaluates Stage 1+2 of the supersession engine against a labeled dataset
 of 30 memory pairs covering the full taxonomy:
 
   SUPERSEDES           â€” same entity+attribute, newer event, different value
+  REFINES              â€” same value, narrowed/enriched statement (closes the old
+                         validity window like SUPERSEDES; only the audit label differs)
   CONFIRMS             â€” same entity+attribute, same value (duplicate source)
   ADDS                 â€” related topic or different attribute
   CONTRADICTS_SAME_TIME â€” conflicting values at the same event time
@@ -72,9 +74,10 @@ LABELED_PAIRS = [
      _FED_RT, _FED_RT, T0, T1, "SUPERSEDES"),
 
     ("Fed rate 5.00%", "Fed rate held at 5.00% â€” vote 12-0",
-     # same value? No â€” "held" means different info (decision vs level)
-     # new_content differs from old â†’ SUPERSEDES
-     _FED_RT, _FED_RT, T1, T2, "SUPERSEDES"),
+     # Same value, enriched with the decision detail â€” a narrowing, not a stale
+     # value. REFINES closes the old validity window exactly like SUPERSEDES,
+     # so agent hygiene is unchanged; the audit trail is just more honest.
+     _FED_RT, _FED_RT, T1, T2, "REFINES"),
 
     ("BlackRock AUM $9T", "BlackRock AUM $10T Q2 record",
      _BLK_AU, _BLK_AU, T0, T1, "SUPERSEDES"),
@@ -138,6 +141,20 @@ LABELED_PAIRS = [
     ("CUSIP 037833100 price $195", "CUSIP 037833100 price $180",
      _CUSIP, _CUSIP, T1, T0, "ADDS"),
 
+    # ---- REFINES (4 cases) â€” narrowing, harvested from the Governor ----
+    ("NVDA Q3 guidance $36B", "NVDA Q3 guidance $36B for data-center segment only",
+     _NVDA_G, _NVDA_G, T0, T1, "REFINES"),
+
+    ("AAPL Q1 revenue $90B", "AAPL Q1 revenue $90B excluding services",
+     _AAPL_R, _AAPL_R, T0, T1, "REFINES"),
+
+    ("TSLA deliveries Q1 400k", "TSLA deliveries Q1 400k in china and europe",
+     _TSLA_D, _TSLA_D, T0, T1, "REFINES"),
+
+    # Same-time narrowing agrees with the old fact â€” must not raise a conflict
+    ("BlackRock AUM $10T", "BlackRock AUM $10T as of fiscal year end",
+     _BLK_AU, _BLK_AU, T2, T2, "REFINES"),
+
     # ---- CONTRADICTS_SAME_TIME (4 cases) ------------------------------
     ("NVDA Q3 guidance $36B", "NVDA Q3 guidance lowered to $28B",
      _NVDA_G, _NVDA_G, T1, T1, "CONTRADICTS_SAME_TIME"),
@@ -159,7 +176,7 @@ LABELED_PAIRS = [
 
 def _run_benchmark() -> dict:
     """Run all labeled pairs and return per-class confusion counts + accuracy."""
-    classes = ["SUPERSEDES", "CONFIRMS", "ADDS", "CONTRADICTS_SAME_TIME"]
+    classes = ["SUPERSEDES", "REFINES", "CONFIRMS", "ADDS", "CONTRADICTS_SAME_TIME"]
     tp = {c: 0 for c in classes}
     fp = {c: 0 for c in classes}
     fn = {c: 0 for c in classes}
