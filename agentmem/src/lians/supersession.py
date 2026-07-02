@@ -151,6 +151,17 @@ def _norm_meta(meta: dict) -> dict[str, str]:
     return {k: adapter.normalize(k, str(meta[k])) for k in meta if k in sk}
 
 
+def _has_structured_key(meta: dict) -> bool:
+    """True if *meta* carries any of the domain adapter's structured keys.
+
+    Distinguishes keyed facts (ticker/metric/entity/…) — which may supersede —
+    from unkeyed free text (chat turns, notes), which never auto-supersedes.
+    """
+    from .adapters import get_adapter
+    sk = get_adapter().structured_keys
+    return any(k in sk for k in (meta or {}))
+
+
 def _metadata_overlap(old_meta: dict, new_meta: dict) -> set[str]:
     old_n = _norm_meta(old_meta)
     new_n = _norm_meta(new_meta)
@@ -356,6 +367,13 @@ def classify_relation(
     # earlier narrowing can't refine the current state.
     if temporal_order != "old_is_later" and _narrows(old_content, new_content):
         return "REFINES", 0.8
+    # Unkeyed free-text guard: without a structured entity+attribute, two facts
+    # that merely differ are DISTINCT statements, not a supersession. Otherwise
+    # every successive chat message (all unkeyed) would supersede the prior one.
+    # SUPERSEDES / CONTRADICTS require a structured key; identity (CONFIRMS) and
+    # containment (REFINES) are handled above and are safe for free text.
+    if not (_has_structured_key(old_meta) or _has_structured_key(new_meta)):
+        return "ADDS", 0.6
     if temporal_order == "new_is_later":
         return "SUPERSEDES", 0.85
     if temporal_order == "same_time":

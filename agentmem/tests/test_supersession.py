@@ -190,6 +190,31 @@ class TestRefines:
         )
         assert relation == "SUPERSEDES"
 
+    def test_unkeyed_free_text_does_not_supersede(self):
+        """Two distinct unkeyed messages are separate statements, not a supersession.
+
+        Regression: broadening Stage 1 to match unkeyed free text by embedding
+        made every successive chat turn SUPERSEDE the previous one (a LangChain
+        chat history of 5 turns collapsed to 1). Unkeyed differing text must ADD.
+        """
+        for old_c, new_c in [("turn one", "turn two"), ("first", "second"),
+                             ("Alice's note", "Bob's note")]:
+            relation, _ = classify_relation(
+                old_content=old_c, new_content=new_c,
+                old_event_time=T0, new_event_time=T1,
+                old_meta={}, new_meta={},
+            )
+            assert relation == "ADDS", f"{old_c!r}->{new_c!r} should ADD, got {relation}"
+
+    def test_unkeyed_narrowing_still_refines(self):
+        """The REFINES guard is containment-based, so it survives the unkeyed guard."""
+        relation, _ = classify_relation(
+            old_content="the fund holds renewable infrastructure",
+            new_content="the fund holds renewable infrastructure in southeast asia only",
+            old_event_time=T0, new_event_time=T1, old_meta={}, new_meta={},
+        )
+        assert relation == "REFINES"
+
     def test_older_narrowing_does_not_refine(self):
         """An out-of-order (earlier) narrowing cannot refine the current state."""
         relation, _ = classify_relation(
