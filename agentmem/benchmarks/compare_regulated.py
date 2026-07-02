@@ -2,10 +2,10 @@
 Regulated-memory eval — head-to-head comparison renderer.
 
 Runs the regulated-eval harness LIVE against Lians and renders a comparison table
-against mem0 and Zep. Lians results are *executed*. Competitor cells are a
-capability assessment derived from each product's public API surface (see
-benchmarks/adapters/{mem0,zep}_adapter.py); with that product's SDK + key present,
-its column is executed live instead.
+against mem0, Zep, Letta, Hindsight, and Supermemory. Lians results are *executed*.
+Competitor cells are a capability assessment derived from each product's public API
+surface (see benchmarks/adapters/*_adapter.py); with that product's SDK + key
+present, its column is executed live instead.
 
     python -m benchmarks.compare_regulated            # print table
     python -m benchmarks.compare_regulated --write    # also write docs/regulated-eval-results.md
@@ -23,7 +23,13 @@ sys.path.insert(0, str(ROOT / "sdk" / "python"))
 
 from benchmarks.regulated_eval import run_regulated_eval  # noqa: E402
 from benchmarks.adapters import PASS, PARTIAL, ABSENT, SCORE  # noqa: E402
-from benchmarks.adapters import mem0_adapter, zep_adapter  # noqa: E402
+from benchmarks.adapters import (  # noqa: E402
+    hindsight_adapter,
+    letta_adapter,
+    mem0_adapter,
+    supermemory_adapter,
+    zep_adapter,
+)
 
 INVARIANTS = [
     ("stale_revision_suppression", "Stale revision suppressed"),
@@ -67,8 +73,11 @@ def _competitor(adapter_mod) -> tuple[str, dict[str, str], bool]:
 def build_table():
     lians = _lians_live()
     columns = [("Lians", lians, True)]
-    columns.append(_competitor(mem0_adapter))
     columns.append(_competitor(zep_adapter))
+    columns.append(_competitor(letta_adapter))
+    columns.append(_competitor(hindsight_adapter))
+    columns.append(_competitor(supermemory_adapter))
+    columns.append(_competitor(mem0_adapter))
     return columns
 
 
@@ -111,8 +120,8 @@ primitive: either the product has an API that satisfies it, or it does not.
 ## What each invariant means
 
 1. **Stale revision suppressed** — after a fact is revised, the superseded value must
-   not be retrieved. Lians does this with deterministic keyed supersession; mem0/Zep
-   attempt it via LLM/graph invalidation (non-deterministic, extraction-dependent).
+   not be retrieved. Lians does this with deterministic keyed supersession; competitors
+   attempt it via LLM/graph/reflection invalidation (non-deterministic, extraction-dependent).
 2. **Point-in-time (as-of) recall** — recall *as it was known* on a past date. Requires
    a bitemporal model with an as-of query primitive.
 3. **Provable erasure** — erased content is cryptographically unrecoverable and the
@@ -132,21 +141,27 @@ application-API call.
 
 - **Lians is executed live** by this script against `LocalLiansClient` (the same
   bitemporal/audit engine as the server). Its score is a real test run, not a claim.
-- **mem0 and Zep are assessed against their public API surface.** This repository is
+- **Competitors are assessed against their public API surface.** This repository is
   not affiliated with them and does not ship their keys, so their columns are scored
   from documented capabilities encoded in
-  `benchmarks/adapters/{{mem0,zep}}_adapter.py`, with a one-line justification per cell.
+  `benchmarks/adapters/*_adapter.py`, with a one-line justification per cell.
   Each adapter calls the *real* SDK primitive where one exists and raises
   `CapabilityAbsent` where the product has none — a thrown invariant is scored as a
   failure because there is literally no API to call.
 - **Anyone can run the live competitor columns.** Install the competitor SDK, export
-  its key (`MEM0_API_KEY` / `ZEP_API_KEY`), and re-run — the adapter switches from the
-  static capability map to live execution and overwrites that column.
+  its key (`MEM0_API_KEY` / `ZEP_API_KEY` / `LETTA_API_KEY` / `HINDSIGHT_API_URL` /
+  `SUPERMEMORY_API_KEY`), and re-run — the adapter switches from the static
+  capability map to live execution and overwrites that column.
 - **Competitors are credited where they're strong.** Zep's bitemporal graph earns
   partials on temporal recall and stale-edge invalidation; mem0's LLM fact management
-  earns a partial on supersession. This is not a strawman — the gaps are the
-  compliance primitives (provable erasure, lookahead guard, audit snapshot) that the
-  dev-memory and temporal-graph lanes were never built to provide.
+  earns a partial on supersession; Letta's agent-driven memory edits earn a partial on
+  supersession; Hindsight's timestamped retain + temporal retrieval earns a partial on
+  point-in-time recall and its belief revision a partial on supersession; Supermemory's
+  profile consolidation earns a partial on supersession. This is not a strawman — the
+  gaps are the compliance primitives (provable erasure, lookahead guard, audit
+  snapshot) that the dev-memory, agent-memory, and temporal-graph lanes were never
+  built to provide. Hindsight is the only column with **no deletion API at all**, so
+  its erasure cell is absent rather than partial.
 
 ## Reproduce
 
@@ -156,8 +171,11 @@ python -m benchmarks.compare_regulated            # print the table
 python -m benchmarks.compare_regulated --write    # regenerate this file
 
 # optional live competitor columns:
-pip install mem0ai && export MEM0_API_KEY=...      # then re-run
-pip install zep-cloud && export ZEP_API_KEY=...    # then re-run
+pip install mem0ai && export MEM0_API_KEY=...            # then re-run
+pip install zep-cloud && export ZEP_API_KEY=...          # then re-run
+pip install letta-client && export LETTA_API_KEY=...     # then re-run
+pip install hindsight-client && export HINDSIGHT_API_URL=...  # then re-run
+pip install supermemory && export SUPERMEMORY_API_KEY=...     # then re-run
 ```
 """
 
