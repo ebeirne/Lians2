@@ -60,7 +60,13 @@ public final class LiansClient {
         this.apiKey = options.apiKey();
         this.adminSecret = options.adminSecret();
         this.timeout = options.timeout();
-        this.http = HttpClient.newBuilder().connectTimeout(options.timeout()).build();
+        // Pin HTTP/1.1: the default HttpClient policy is HTTP/2, and against a
+        // cleartext HTTP/1.1 server (uvicorn) the h2c upgrade attempt is rejected
+        // as "Invalid HTTP request received". The Lians API speaks HTTP/1.1.
+        this.http = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(options.timeout())
+                .build();
     }
 
     /** Convenience constructor for the common case (no admin secret, default timeout). */
