@@ -376,3 +376,66 @@ async def test_erase_event_appears_in_audit_trail(client):
     assert resp.status_code == 200
     ops = [e["op"] for e in resp.json()["event_trail"]]
     assert "erase" in ops, "Erase operation must appear in the immutable audit trail"
+
+
+@pytest.mark.asyncio
+async def test_erased_memory_never_reaches_recall(client):
+    """
+    Regression (found in live limit-testing 2026-07-02): erase nulled the
+    ciphertext but left the live_facts read-model row, so present-time recall
+    returned the erased memory as a null-content tombstone — and the
+    content-derived embedding plus plaintext metadata survived on the row.
+    """
+    add = await client.post("/v1/memories", headers=_h(), json={
+        "agent_id": AGENT,
+        "content": "patient Ana K takes 40mg atorvastatin, MRN 555-0199",
+        "event_time": T0.isoformat(),
+        "subject_id": "ana-k-004",
+        "metadata": {"patient_name": "Ana K", "mrn": "555-0199"},
+    })
+    mem_id = add.json()["id"]
+
+    resp = await client.post("/v1/erase", headers=_h(), json={
+        "subject_id": "ana-k-004", "request_ref": "GDPR-req-0044",
+    })
+    assert resp.status_code == 200 and resp.json()["memories_erased"] == 1
+
+    # 1 · present-time recall returns no tombstone for the erased fact
+    resp = await client.post("/v1/recall", headers=_h(), json={
+        "agent_id": AGENT, "query": "Ana atorvastatin MRN", "k": 10,
+    })
+    assert resp.status_code == 200
+    ids = [m["id"] for m in resp.json()["memories"]]
+    assert mem_id not in ids, "erased memory leaked into recall as a tombstone"
+
+    # the tombstone row itself remains reachable for audit (lineage still 200)
+    resp = await client.get(f"/v1/memories/{mem_id}/lineage", headers=_h())
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_erase_shreds_embedding_and_metadata(db, client):
+    from src.lians.models import LiveFact, Memory
+    from sqlalchemy import select
+    from uuid import UUID
+
+    add = await client.post("/v1/memories", headers=_h(), json={
+        "agent_id": AGENT,
+        "content": "subject Rex B salary is $250k",
+        "event_time": T0.isoformat(),
+        "subject_id": "rex-b-005",
+        "metadata": {"person": "Rex B", "field": "salary"},
+    })
+    mem_id = UUID(add.json()["id"])
+    await client.post("/v1/erase", headers=_h(), json={
+        "subject_id": "rex-b-005", "request_ref": "GDPR-req-0045",
+    })
+
+    mem = (await db.execute(select(Memory).where(Memory.id == mem_id))).scalar_one()
+    assert mem.erased_at is not None
+    assert mem.content_encrypted is None
+    assert mem.embedding is None, "content-derived embedding must be shredded on erase"
+    assert mem.metadata_ in ({}, None), "plaintext metadata must be scrubbed on erase"
+
+    lf = (await db.execute(select(LiveFact).where(LiveFact.memory_id == mem_id))).scalar_one_or_none()
+    assert lf is None, "live_facts read-model row must be purged on erase"

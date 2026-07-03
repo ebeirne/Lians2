@@ -207,3 +207,33 @@ async def test_snapshot_diff_between_two_dates(client):
     # T3 snapshot has at least everything T1 had (plus new)
     assert len(ids_t3) >= len(ids_t1)
     assert ids_t1.issubset(ids_t3) or len(ids_t3) > len(ids_t1)
+
+
+@pytest.mark.asyncio
+async def test_snapshot_erased_memory_is_null_content_tombstone(client):
+    """Crypto-shredded memories stay visible as tombstones: existence,
+    timestamps, and hash survive; content comes back null. An examiner must
+    be able to see that a fact existed even after a GDPR erasure."""
+    await _add(client, "Keep me", T0)
+    r = await client.post("/v1/memories", json={
+        "agent_id": AGENT,
+        "content": "Subject holds 500 shares",
+        "event_time": T0.isoformat(),
+        "subject_id": "subj-erase-me",
+    }, headers=_h())
+    assert r.status_code == 200, r.text
+    erased_id = r.json()["id"]
+
+    r = await client.post("/v1/erase", json={
+        "subject_id": "subj-erase-me", "request_ref": "gdpr-1",
+    }, headers=_h())
+    assert r.status_code == 200, r.text
+
+    r = await _snapshot(client, T1)
+    body = r.json()
+    assert body["total"] == 2, "erased memory must still appear in the snapshot"
+    by_id = {i["id"]: i for i in body["items"]}
+    tomb = by_id[erased_id]
+    assert tomb["content"] is None
+    assert tomb["erased_at"] is not None
+    assert by_id != {} and any(i["content"] == "Keep me" for i in body["items"])

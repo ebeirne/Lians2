@@ -902,9 +902,12 @@ async def prune_expired_content(db: AsyncSession, namespace: str) -> RetentionPr
     result = await db.execute(stmt)
     memories = result.scalars().all()
 
+    pruned_agents: set[str] = set()
     for mem in memories:
         mem.content_encrypted = None
+        mem.embedding = None
         mem.erased_at = now
+        pruned_agents.add(mem.agent_id)
         await chain_log(
             db, namespace=namespace, agent_id=mem.agent_id,
             op="retention_prune", memory_id=mem.id,
@@ -912,7 +915,16 @@ async def prune_expired_content(db: AsyncSession, namespace: str) -> RetentionPr
             payload={"cutoff_date": cutoff.isoformat(), "content_ttl_days": pol.content_ttl_days},
         )
 
+    # Same tombstone hazard as erase_subject: pruned content must leave the
+    # present-time read model and caches, or recall returns empty husks.
+    await remove_live_facts(db, [mem.id for mem in memories])
+
     await db.commit()
+
+    for aid in pruned_agents:
+        invalidate_working_set(namespace, aid)
+        await invalidate_agent(namespace, aid)
+
     return RetentionPruneResult(namespace=namespace, memories_pruned=len(memories), cutoff_date=cutoff)
 
 
@@ -936,6 +948,12 @@ async def erase_subject(
     agent_ids: set[str] = set()
     for mem in memories:
         mem.content_encrypted = None
+        # The embedding is derived from the content (inversion attacks can
+        # approximate the original text) and metadata routinely carries
+        # personal identifiers — GDPR erasure must shred both, not just the
+        # ciphertext.
+        mem.embedding = None
+        mem.metadata_ = {}
         mem.erased_at = now
         agent_ids.add(mem.agent_id)
         await chain_log(
@@ -944,6 +962,11 @@ async def erase_subject(
             content_hash=mem.content_hash,
             payload={"subject_id": subject_id, "request_ref": request_ref},
         )
+
+    # Purge the denormalized present-time read model. Without this the next
+    # working-set fill resurrects the erased fact as a null-content tombstone
+    # in recall results (with its own denormalized embedding copy).
+    await remove_live_facts(db, [mem.id for mem in memories])
 
     await destroy_subject_key(db, subject_id, namespace)
 
@@ -962,6 +985,7 @@ async def erase_subject(
     # Change 7: invalidate session caches for all agents that had this subject's data
     for aid in agent_ids:
         invalidate_working_set(namespace, aid)
+        await invalidate_agent(namespace, aid)
 
     record_erase(namespace, len(memories))
     return len(memories)
@@ -997,7 +1021,9 @@ async def get_knowledge_snapshot(
                 Memory.valid_from <= as_of,
                 or_(Memory.valid_to.is_(None), Memory.valid_to > as_of),
                 Memory.event_time <= as_of,
-                Memory.erased_at.is_(None),
+                # No erased_at filter: crypto-shredded memories appear as
+                # tombstones (content=None, existence + hash preserved) — an
+                # examiner must see that a fact existed even after erasure.
             )
         )
         .order_by(Memory.event_time.asc())
