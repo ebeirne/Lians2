@@ -22,6 +22,7 @@ Point-in-time queries (as_of set) still go to the ``memories`` table because
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -96,10 +97,51 @@ _BM25_K1 = 1.5
 _BM25_B = 0.75
 _BM25_AVG_DOC_LEN = 50.0
 
+# Word runs (unicode-aware, so Cyrillic/Greek/Arabic/Devanagari words tokenize
+# as words, and punctuation never glues onto a token the way naive
+# str.split() left it: "revenue." must match a query for "revenue").
+_BM25_WORD = re.compile(r"\w+", re.UNICODE)
+# Scripts written without spaces between words (Han, Hiragana, Katakana,
+# Hangul, Thai, Lao, Myanmar, Khmer). A whitespace tokenizer sees a whole
+# sentence as one "word" there, so no query can ever match; index character
+# bigrams instead — the standard dependency-free segmentation fallback.
+_BM25_UNSEG_SPAN = re.compile(
+    "["
+    "฀-๿"  # Thai
+    "຀-໿"  # Lao
+    "က-႟"  # Myanmar
+    "ក-៿"  # Khmer
+    "぀-ヿ"  # Hiragana, Katakana
+    "㐀-䶿"  # CJK Extension A
+    "一-鿿"  # CJK Unified Ideographs
+    "가-힯"  # Hangul syllables
+    "豈-﫿"  # CJK Compatibility Ideographs
+    "]+"
+)
+
+
+def _bm25_tokens(text: str) -> list[str]:
+    """Shared query/content tokenizer for the lexical half of hybrid recall."""
+    tokens: list[str] = []
+    for word in _BM25_WORD.findall(text.lower()):
+        last = 0
+        for m in _BM25_UNSEG_SPAN.finditer(word):
+            if m.start() > last:
+                tokens.append(word[last:m.start()])
+            span = m.group(0)
+            if len(span) == 1:
+                tokens.append(span)
+            else:
+                tokens.extend(span[i:i + 2] for i in range(len(span) - 1))
+            last = m.end()
+        if last < len(word):
+            tokens.append(word[last:])
+    return tokens
+
 
 def _bm25_score(query: str, content: str) -> float:
-    q_tokens = set(query.lower().split())
-    c_words = content.lower().split()
+    q_tokens = set(_bm25_tokens(query))
+    c_words = _bm25_tokens(content)
     if not q_tokens or not c_words:
         return 0.0
     doc_len = len(c_words)
