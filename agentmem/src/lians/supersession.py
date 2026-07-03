@@ -208,6 +208,25 @@ def _is_full_structured_match(old_meta: dict, new_meta: dict) -> bool:
     return bool(old_s) and old_s == new_s
 
 
+def _candidate_content(mem: Memory, subject_key: Optional[bytes]) -> Optional[str]:
+    """Best-effort plaintext of a candidate memory (same rules as the slow path):
+    subject-keyed rows decrypt with the caller's DEK, unkeyed rows are raw bytes.
+    Returns None when the content is unavailable — callers must degrade safely."""
+    if mem.content_encrypted is None:
+        return None
+    if mem.subject_id:
+        if not subject_key:
+            return None
+        try:
+            return decrypt_content(bytes(mem.content_encrypted), subject_key)
+        except Exception:
+            return None
+    try:
+        return bytes(mem.content_encrypted).decode()
+    except Exception:
+        return None
+
+
 async def _keyed_supersession(
     db: AsyncSession,
     namespace: str,
@@ -215,12 +234,22 @@ async def _keyed_supersession(
     new_meta: dict,
     new_event_time: datetime,
     new_content_hash: Optional[str] = None,
+    new_content: Optional[str] = None,
+    subject_key: Optional[bytes] = None,
 ) -> SupersessionResult:
     """Fast path for keyed facts: supersede strictly by event_time, no model call.
 
     Fetches currently-live memories with the identical structured key set and
     supersedes those whose event_time is older than new_event_time.  O(small)
     DB fetch; zero LLM cost; result is fully deterministic.
+
+    The relation label is still classified, deterministically: an identical
+    value re-stated later is CONFIRMS (duplicate ingestion, nothing to close),
+    a later value that restates the old and adds detail is REFINES (0.8 — same
+    window-close as SUPERSEDES, different audit label), and only a genuinely
+    changed value is SUPERSEDES (1.0). Without this, REFINES/CONFIRMS were
+    unreachable for keyed facts — every keyed rewrite audited as a 1.0
+    supersession even when nothing changed.
     """
     stmt = select(Memory).where(
         and_(
@@ -234,8 +263,10 @@ async def _keyed_supersession(
     candidates = result.scalars().all()
 
     superseded_ids: list[UUID] = []
+    refines_ids: list[UUID] = []
     conflict_ids: list[UUID] = []
-    confirms_ids: list[UUID] = []
+    confirms_close_ids: list[UUID] = []   # identical value re-stated LATER: close old window
+    confirms_dupe_ids: list[UUID] = []    # identical value at the SAME time: coexisting duplicate
     new_et = _utc(new_event_time)
 
     for mem in candidates:
@@ -246,24 +277,44 @@ async def _keyed_supersession(
             continue
         old_et = _utc(mem.event_time)
         if old_et < new_et:
-            superseded_ids.append(mem.id)
+            # Identical value observed again later: a re-confirmation. The new
+            # observation becomes the live copy (old window closes at the new
+            # event_time — validity is continuous since the value is unchanged),
+            # but the audit label must say CONFIRMS, not SUPERSEDES: nothing
+            # actually changed.
+            if new_content_hash and mem.content_hash and new_content_hash == mem.content_hash:
+                confirms_close_ids.append(mem.id)
+            elif new_content and _narrows(_candidate_content(mem, subject_key), new_content):
+                refines_ids.append(mem.id)
+            else:
+                superseded_ids.append(mem.id)
         elif old_et == new_et:
             # Same structured key, same point in time.
             # If the content hashes match it's the same fact from a different source
-            # (CONFIRMS) — a duplicate ingestion, not a conflict.  Only flag as
-            # CONTRADICTS_SAME_TIME when the values are demonstrably different.
+            # (CONFIRMS) — a duplicate ingestion, not a conflict; closing the old
+            # window here would create a zero-width validity window, so both stay.
+            # Only flag as CONTRADICTS_SAME_TIME when the values are demonstrably
+            # different.
             if new_content_hash and mem.content_hash and new_content_hash == mem.content_hash:
-                confirms_ids.append(mem.id)
+                confirms_dupe_ids.append(mem.id)
             else:
                 conflict_ids.append(mem.id)
         # old_et > new_et: a newer fact already exists — out-of-order ingestion,
         # treat as ADDS so we don't overwrite newer data.
 
     if superseded_ids:
+        # A mixed batch still closes every old window (narrowed and re-confirmed
+        # versions included); the stronger label wins the audit record.
         return SupersessionResult(
             relation="SUPERSEDES",
             confidence=1.0,
-            superseded_ids=superseded_ids,
+            superseded_ids=superseded_ids + refines_ids + confirms_close_ids,
+        )
+    if refines_ids:
+        return SupersessionResult(
+            relation="REFINES",
+            confidence=0.8,
+            superseded_ids=refines_ids + confirms_close_ids,
         )
     if conflict_ids:
         return SupersessionResult(
@@ -271,7 +322,13 @@ async def _keyed_supersession(
             confidence=0.9,
             conflict_ids=conflict_ids,
         )
-    if confirms_ids:
+    if confirms_close_ids:
+        return SupersessionResult(
+            relation="CONFIRMS",
+            confidence=1.0,
+            superseded_ids=confirms_close_ids,
+        )
+    if confirms_dupe_ids:
         return SupersessionResult(
             relation="CONFIRMS",
             confidence=1.0,
@@ -414,7 +471,8 @@ async def run_supersession(
     new_structured = {k: new_meta[k] for k in new_meta if k in _sk and new_meta.get(k)}
     if new_structured:
         return await _keyed_supersession(
-            db, namespace, agent_id, new_meta, new_event_time, new_content_hash
+            db, namespace, agent_id, new_meta, new_event_time, new_content_hash,
+            new_content=new_content, subject_key=subject_key,
         )
 
     # Unkeyed path: Stage 1 + Stage 2
