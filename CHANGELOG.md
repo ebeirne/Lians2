@@ -2,7 +2,15 @@
 
 All notable changes to Lians. Versions follow semver; SDKs are released in lock-step.
 
-## 0.3.3 — 2026-07-03
+## 0.3.4 — 2026-07-03
+
+Supersedes 0.3.3, which never reached PyPI: its wheel force-include only
+resolved from a repo checkout, and the release pipeline builds the wheel from
+the sdist. A custom hatch build hook now resolves the vendored engine from
+either location; the sdist ships the engine too, so `pip install` from source
+works. (npm 0.3.3 was published before the failure; 0.3.4 restores lock-step.)
+
+## 0.3.3 — 2026-07-03 (not published to PyPI)
 
 Patch release. Fixes the flagship zero-setup path for installed users.
 
