@@ -21,10 +21,17 @@ introduction it is.*
    If they dispute it and the API still doesn't exist → the cell stands, and
    the exchange (with their permission) becomes an appendix note.
 
+**Status:** final ready-to-send copies (real links, July 17 deadline) are in
+[right-of-reply-emails-2026-07.md](right-of-reply-emails-2026-07.md).
+Upstream bug reports filed **before** first contact, 2026-07-03, so a vendor
+looking us up finds courteous engineering first:
+[mem0ai/mem0#6085](https://github.com/mem0ai/mem0/issues/6085) ·
+[getzep/graphiti#1258 (comment)](https://github.com/getzep/graphiti/issues/1258#issuecomment-4880328136).
+
 | Vendor | Contact channel | Sent | Response | Action |
 |---|---|---|---|---|
-| Mem0 | founders@mem0.ai / GitHub issue | — | — | — |
-| Zep | founders@getzep.com / GitHub issue | — | — | — |
+| Mem0 | founders@mem0.ai / GitHub issue | — | — | bug report filed 2026-07-03 (#6085) |
+| Zep | founders@getzep.com / GitHub issue | — | — | confirming comment on #1258, 2026-07-03 |
 | Letta | contact@letta.com | — | — | — |
 | Hindsight | (find via site/GitHub) | — | — | — |
 | Supermemory | (find via site/GitHub) | — | — | — |

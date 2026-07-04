@@ -155,8 +155,9 @@ ACME Corp is Baa2" → "Moody's upgraded ACME Corp's credit rating to Baa1"):
   behaviorally → partial (no proof artifact).
 
 Upstream defects found while executing the vendors' own quickstart paths
-(each required an accommodation to avoid scoring an unearned zero; all are
-worth upstream reports):
+(each required an accommodation to avoid scoring an unearned zero; reported
+upstream 2026-07-03: [mem0ai/mem0#6085](https://github.com/mem0ai/mem0/issues/6085),
+[getzep/graphiti#1258 (comment)](https://github.com/getzep/graphiti/issues/1258#issuecomment-4880328136)):
 
 1. **mem0 2.0.11**: the default OpenAI model rejects mem0's own default
    `temperature=0.1` ("Unsupported value ... Only the default (1) value is
