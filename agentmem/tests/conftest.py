@@ -18,6 +18,24 @@ from src.lians.db import Base
 from src.lians.config import get_settings, Settings
 import src.lians.kms as _kms
 
+# ---------------------------------------------------------------------------
+# Determinism guard: a developer's local `agentmem/.env` (e.g. a Docker-stack
+# env with a real MASTER_ENCRYPTION_KEY, cache/rate-limit/WORM settings) must
+# never leak into the test run — it changes crypto, caching, and audit-chain
+# behavior, so the suite fails on machines where it passes everywhere else.
+# Point pydantic-settings at a nonexistent env file and scrub the same
+# variables from the process environment before any Settings() is built.
+# Tests that need specific values set them explicitly (monkeypatch/fixtures).
+# ---------------------------------------------------------------------------
+Settings.model_config["env_file"] = "__lians_tests_ignore_dotenv__"
+for _var in (
+    "MASTER_ENCRYPTION_KEY", "KMS_PROVIDER", "EMBEDDING_PROVIDER",
+    "RATE_LIMIT_PER_MINUTE", "RECALL_CACHE_ENABLED", "WORM_MODE",
+    "ADMISSION_MODE", "SIEM_URL", "AIRGAP_MODE", "DATABASE_URL", "REDIS_URL",
+):
+    os.environ.pop(_var, None)
+get_settings.cache_clear()
+
 _COMPOSE_DIR = Path(__file__).parent.parent
 _DB_URL = "postgresql+asyncpg://agentmem:agentmem@localhost:5432/agentmem"
 

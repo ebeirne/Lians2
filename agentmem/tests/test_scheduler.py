@@ -203,22 +203,33 @@ class TestSchedulerTask:
             await db.commit()
             await _seed_memory(db, "sched-ns", "agent-1", days_ago=10)
 
-        # Run scheduler with 0.05s interval; let one cycle fire
+        # Run scheduler with 0.05s interval; let one cycle fire.
+        # Cancel only after the prune is observed: cancelling mid-DB-call
+        # invalidates the StaticPool's single in-memory connection, and the
+        # replacement connection would be a fresh, empty :memory: database.
         task = asyncio.create_task(
             run_retention_scheduler(session_factory, interval_hours=0.05 / 3600)
         )
-        await asyncio.sleep(0.1)
-        task.cancel()
         try:
-            await task
-        except asyncio.CancelledError:
-            pass
+            deadline = asyncio.get_running_loop().time() + 5.0
+            while True:
+                async with session_factory() as db:
+                    result = await db.execute(
+                        select(Memory).where(Memory.namespace == "sched-ns")
+                    )
+                    mems = result.scalars().all()
+                if mems and all(m.content_encrypted is None for m in mems):
+                    break
+                assert asyncio.get_running_loop().time() < deadline, \
+                    "prune cycle never fired"
+                await asyncio.sleep(0.02)
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
-        async with session_factory() as db:
-            result = await db.execute(
-                select(Memory).where(Memory.namespace == "sched-ns")
-            )
-            mems = result.scalars().all()
         assert all(m.content_encrypted is None for m in mems)
 
     @pytest.mark.asyncio
