@@ -40,5 +40,18 @@ Pushing a `vX.Y.Z` tag triggers:
 
 ## After a release
 
+- **Publish to the MCP registry — manual, easy to forget** (0.3.3 and the
+  first day of 0.3.4 were missing because this step lives outside the
+  tag-triggered pipeline):
+
+  ```bash
+  # from the repo root (reads server.json, which the version bump updated)
+  mcp-publisher login github     # interactive device flow; token expires
+  mcp-publisher publish
+  # verify:
+  curl -s "https://registry.modelcontextprotocol.io/v0/servers/io.github.ebeirne%2Flians/versions/latest"
+  ```
+
 - Verify: `pip install lians-sdk==X.Y.Z`, `npm view @lians-ai/lians`, `go get github.com/Lians-ai/Lians/agentmem/sdk/go@vX.Y.Z`, and the Maven Central listing.
+- **Verify the wheel outside the monorepo**: `pip install "lians-sdk[local]==X.Y.Z"` in a clean venv and run a `LocalLiansClient` round-trip — the local mode imports the vendored engine, which only a from-scratch install exercises (the 0.3.2 wheel shipped broken because all testing ran inside the repo).
 - Update the npm scope decision if `@lians-ai` isn't your final choice — it's referenced in `package.json`, `README.md`, `docs/`, and `integrations/lians-plugin/CLAUDE.md`.
