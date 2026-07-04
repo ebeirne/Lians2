@@ -85,7 +85,7 @@ fresh `pip install lians-sdk[local]`.
 > - Full receipts: 918 retrievals of not-yet-existing notes, each logged with
 >   decision timestamp vs note creation timestamp
 >
-> Runs in ~30s, no API keys, seeded/deterministic: [repo link]
+> Runs in ~30s, no API keys, seeded/deterministic: https://github.com/Lians-ai/lookahead-bias-demo
 >
 > The subtle case worth knowing even if you never touch LLMs: `late_revision` —
 > the event is old but the *corrected number* arrived later (restatements,
@@ -125,7 +125,7 @@ fresh `pip install lians-sdk[local]`.
 > data. Agent memory needs the same discipline: bitemporal facts, as-of queries.
 > And the same machinery answers the examiner's question — "what did the system
 > know when it decided?" Backtest correctness and audit-readiness are the same
-> primitive. Reproducible demo (30s, no API keys): [link]
+> primitive. Reproducible demo (30s, no API keys): https://github.com/Lians-ai/lookahead-bias-demo
 
 ## 4. Five-slide DM summary (for quant contacts)
 
@@ -154,7 +154,7 @@ fresh `pip install lians-sdk[local]`.
 > with and without the leak: Sharpe 4.6 vs −0.6, with a receipts table proving
 > every contaminated retrieval.
 >
-> Reproduction (30 seconds, no keys): {repo link}
+> Reproduction (30 seconds, no keys): https://github.com/Lians-ai/lookahead-bias-demo
 >
 > If your team is putting agents anywhere near the research loop, worth 20
 > minutes? We'll run the contamination check against your memory setup — if
