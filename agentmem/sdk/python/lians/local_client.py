@@ -43,18 +43,41 @@ from sqlalchemy.pool import StaticPool
 
 def _ensure_src_importable() -> None:
     """
-    Add the agentmem package root to sys.path so that
-    ``from src.lians.xxx import ...`` resolves in development.
-    This is a no-op once agentmem is installed as a proper package
-    (in which case ``from agentmem.xxx import ...`` takes over).
-    Structure assumption: this file lives at
-      <pkg_root>/sdk/python/lians/local_client.py
-    so parents[3] == <pkg_root>.
+    Make ``from src.lians.xxx import ...`` resolve in both environments:
+
+    1. **Monorepo checkout** — this file lives at
+       ``<pkg_root>/sdk/python/lians/local_client.py``, so ``parents[3]`` is
+       the agentmem root that contains ``src/lians``; add it to sys.path.
+    2. **Installed wheel** — the engine ships inside the wheel as
+       ``lians_engine.lians`` (see pyproject force-include). Alias it to
+       ``src.lians`` in sys.modules so the service-layer imports above
+       resolve identically. The engine's own imports are all relative, so
+       the alias is the only indirection needed.
+
+    A plain ``pip install lians-sdk`` (no ``[local]`` extra) leaves neither
+    available; LocalLiansClient then raises a clear error on first use.
     """
     import sys as _sys
-    pkg_root = str(Path(__file__).resolve().parents[3])
-    if pkg_root not in _sys.path:
-        _sys.path.insert(0, pkg_root)
+    pkg_root = Path(__file__).resolve().parents[3]
+    if (pkg_root / "src" / "lians").is_dir():
+        if str(pkg_root) not in _sys.path:
+            _sys.path.insert(0, str(pkg_root))
+        return
+
+    try:
+        import lians_engine.lians as _engine
+    except ModuleNotFoundError:
+        return  # HTTP-only install; the local engine was never shipped/needed
+
+    import types
+    shim = _sys.modules.get("src")
+    if shim is None:
+        shim = types.ModuleType("src")
+        shim.__path__ = []  # mark as package so submodule imports are legal
+        _sys.modules["src"] = shim
+    _sys.modules.setdefault("src.lians", _engine)
+    if not hasattr(shim, "lians"):
+        shim.lians = _engine
 
 
 _ensure_src_importable()

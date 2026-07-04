@@ -2,6 +2,24 @@
 
 All notable changes to Lians. Versions follow semver; SDKs are released in lock-step.
 
+## 0.3.3 — 2026-07-03
+
+Patch release. Fixes the flagship zero-setup path for installed users.
+
+### Fixed
+- **`LocalLiansClient` was broken on every installed wheel.** The local mode
+  imports the service engine (`src.lians.*`), which only existed in the
+  monorepo checkout — `pip install lians-sdk[local]` outside the repo failed
+  with `ModuleNotFoundError: No module named 'src'` on first use. The wheel
+  now vendors the engine as `lians_engine` (hatchling force-include) and the
+  SDK aliases it to `src.lians` at import time; the `[local]` extra gained the
+  engine's runtime dependencies (pydantic/-settings, cryptography, pgvector,
+  numpy, fastapi, asyncpg). Verified end-to-end from a clean venv: add,
+  recall, `recall_at`, `backtest_check`, crypto-shred erase with certificate,
+  and audit-chain verify.
+- C and Go SDK version strings had drifted (still 0.3.0); all versions are
+  back in lock-step at 0.3.3.
+
 ## 0.3.2 — 2026-07-02
 
 Patch release. Cross-language + packaging validation against a live server found
