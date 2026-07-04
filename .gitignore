@@ -11,6 +11,9 @@ dist/
 build/
 *.whl
 
+# Java build output
+agentmem/sdk/java/target/
+
 # Test / coverage
 .pytest_cache/
 .coverage
