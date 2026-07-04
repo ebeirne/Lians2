@@ -34,9 +34,12 @@ issue is deployment shape, not quality:
 
 ## Head-to-head on the regulated axis
 
-From the [regulated-memory eval](regulated-eval-results.md) (open harness,
-runnable adapters — Lians executed live, Zep scored from its public API surface,
-re-runnable with your own key):
+From the [regulated-memory eval](regulated-eval-results.md) (open harness —
+Lians and **Graphiti OSS both executed live**, Graphiti in its default OpenAI
+configuration on embedded Kuzu; per-cell evidence in the eval's appendix,
+including due credit: Graphiti's contradiction invalidation fired correctly
+and backdated `invalid_at` to the revision date — but its default search
+returns invalidated edges, so suppression isn't turnkey):
 
 | Regulated invariant | Lians | Zep / Graphiti |
 |---|:--:|:--:|

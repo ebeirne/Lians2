@@ -55,8 +55,11 @@ reasons:
 | License of the full feature set | open core | proprietary | **Apache 2.0, everything** |
 
 On the compliance axis specifically, the [regulated-memory eval](regulated-eval-results.md)
-(open harness; mem0's column is runnable against your own key) scores
-Lians 5.0/5 vs mem0 1.0/5.
+scores Lians 5.0/5 vs mem0 OSS 0.5/5 — both **executed live**, mem0 in its
+default configuration (OpenAI LLM + embeddings). The live run showed mem0
+storing and returning both the current and the superseded revision of a fact
+side by side, unmarked; per-cell evidence is in the eval's appendix, and the
+harness is open if you want to re-run it.
 
 ## What mem0 does better — read this before switching
 

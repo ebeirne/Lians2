@@ -129,6 +129,50 @@ def render_markdown(columns) -> str:
     return "\n".join(lines)
 
 
+LIVE_APPENDIX = """
+## Appendix — live-run findings (2026-07-04, mem0 2.0.11, graphiti-core 0.29.2)
+
+Executed configurations: **mem0 OSS** `Memory.from_config({"llm": {"provider":
+"openai", "config": {"model": "gpt-4o-mini"}}})` — default everything else;
+**Graphiti OSS** default OpenAI clients on an embedded Kuzu database.
+
+Per-cell behavioral evidence (stale-revision pair: "Moody's credit rating for
+ACME Corp is Baa2" → "Moody's upgraded ACME Corp's credit rating to Baa1"):
+
+- **mem0**: stored and returned *both* revisions ("credit rating is Baa2" and
+  "upgraded to Baa1" side by side in search results) with no marking on the
+  stale one → fail. `delete_all()` made erased content unretrievable but
+  emits no proof artifact → partial. As-of recall: mem0 2.x's `timestamp` /
+  `reference_date` parameters are documented by mem0 itself as "Platform-only
+  temporal parameter. Not supported in OSS" → absent in the self-hosted product.
+- **Graphiti**: its contradiction invalidation **worked** — both stale edges
+  received `invalid_at = 2025-11-01`, correctly backdated to the revision's
+  reference time (genuinely good engineering, credited). But default search
+  **returns invalidated edges**: an agent assembling context from Graphiti's
+  retrieval gets "ACME is rated Baa2" back unless the caller filters
+  `invalid_at` manually → partial (capability present, suppression not
+  turnkey). `remove_episode` deleted the episode and its derived edges
+  behaviorally → partial (no proof artifact).
+
+Upstream defects found while executing the vendors' own quickstart paths
+(each required an accommodation to avoid scoring an unearned zero; all are
+worth upstream reports):
+
+1. **mem0 2.0.11**: the default OpenAI model rejects mem0's own default
+   `temperature=0.1` ("Unsupported value ... Only the default (1) value is
+   supported"), so every default-config `add()` fails LLM extraction and
+   stores nothing. Accommodation: pin `gpt-4o-mini` (the model mem0's docs
+   use), which accepts their default temperature.
+2. **graphiti-core 0.29.2 (Kuzu)**: passing any `group_id` to `add_episode`
+   crashes — it reads `driver._database`, which `KuzuDriver.__init__` never
+   sets. Accommodation: use the provider's default group.
+3. **graphiti-core 0.29.2 (Kuzu)**: `build_indices_and_constraints()` is a
+   no-op and `setup_schema()` creates no FTS indexes, but default search
+   issues `QUERY_FTS_INDEX` — search crashes out of the box. Accommodation:
+   run graphiti's own `get_fulltext_indices(KUZU)` statements at setup.
+"""
+
+
 def render_doc(columns) -> str:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     table = render_markdown(columns)
@@ -229,7 +273,7 @@ pip install letta-client && export LETTA_API_KEY=...     # then re-run
 pip install hindsight-client && export HINDSIGHT_API_URL=...  # then re-run
 pip install supermemory && export SUPERMEMORY_API_KEY=...     # then re-run
 ```
-"""
+{LIVE_APPENDIX if any(live for n, _, live in columns[1:]) else ""}"""
 
 
 def main() -> None:

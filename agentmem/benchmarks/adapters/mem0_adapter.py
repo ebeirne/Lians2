@@ -78,7 +78,15 @@ class Mem0OSSAdapter:
         try:
             from mem0 import Memory  # type: ignore
 
-            self._client = Memory()
+            # Default config EXCEPT the LLM model: mem0 2.0.11's resolved
+            # default OpenAI model rejects mem0's own default temperature=0.1
+            # ("Unsupported value: 'temperature' does not support 0.1 with
+            # this model"), so every add() silently stores nothing and the
+            # column would score an unearned 0. gpt-4o-mini is the model
+            # mem0's docs use and accepts their default temperature.
+            self._client = Memory.from_config({
+                "llm": {"provider": "openai", "config": {"model": "gpt-4o-mini"}},
+            })
         except Exception:
             self._client = None
 

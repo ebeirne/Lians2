@@ -22,12 +22,26 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 
+import re
+
+
 def _dt(y: int, m: int, d: int) -> datetime:
     return datetime(y, m, d, tzinfo=timezone.utc)
 
 
 def _content(memories: list[dict]) -> list[str]:
     return [(m.get("content") or "") for m in memories]
+
+
+def _any_match(pattern: str, texts: list[str]) -> bool:
+    """
+    Regex match instead of literal substring: LLM-managed stores (mem0,
+    Graphiti) rewrite facts on ingestion ("40B" -> "40 billion dollars"), and
+    a check must not miss the value because of paraphrase — that would record
+    the wrong failure reason.
+    """
+    rx = re.compile(pattern, re.IGNORECASE)
+    return any(rx.search(t) for t in texts)
 
 
 def run_regulated_eval(client, agent: str = "reg-eval") -> dict[str, Any]:
@@ -59,15 +73,34 @@ def run_regulated_eval(client, agent: str = "reg-eval") -> dict[str, Any]:
         })
 
     def stale_revision_suppression():
+        # The fact pair is deliberately entity-to-entity ("Moody's rates ACME")
+        # so every architecture can represent it: graph stores need two
+        # entities to form an edge — a single-entity scalar fact ("guidance is
+        # 36B") extracts no edge at all and would fail them on sentence shape
+        # rather than on supersession behavior. Baa2/Baa1 are also distinctive
+        # tokens that survive LLM paraphrase on ingestion.
         a = f"{agent}-stale"
-        client.add(a, "ACME revenue guidance is 36B", _dt(2025, 8, 1),
-                   metadata={"ticker": "ACME", "metric": "guidance"})
-        client.add(a, "ACME revenue guidance raised to 40B", _dt(2025, 11, 1),
-                   metadata={"ticker": "ACME", "metric": "guidance"})
-        now = _content(client.recall(a, "ACME revenue guidance", k=5)["memories"])
-        current = any("40B" in c for c in now)
-        stale = any("36B" in c for c in now)
-        return (current and not stale), {"current_retrieved": current, "stale_excluded": not stale}
+        client.add(a, "Moody's credit rating for ACME Corp is Baa2", _dt(2025, 8, 1),
+                   metadata={"entity": "ACME", "metric": "credit_rating"})
+        client.add(a, "Moody's upgraded ACME Corp's credit rating to Baa1", _dt(2025, 11, 1),
+                   metadata={"entity": "ACME", "metric": "credit_rating"})
+        mems = client.recall(a, "ACME credit rating", k=5)["memories"]
+        now = _content(mems)
+        current = _any_match(r"\bBaa1\b", now)
+        stale_hits = [m for m in mems
+                      if re.search(r"\bBaa2\b", m.get("content") or "", re.IGNORECASE)]
+        detail = {"current_retrieved": current, "stale_excluded": not stale_hits}
+        if current and not stale_hits:
+            return True, detail
+        # Distinguish "stale returned, unmarked" (fail) from "stale returned
+        # but flagged invalid by the store" (partial): systems that correctly
+        # invalidate a superseded fact yet still hand it to the caller by
+        # default (e.g. Graphiti's invalid_at) have the capability without
+        # turnkey suppression — the caller must filter it out themselves.
+        if current and stale_hits and all(m.get("invalidated") for m in stale_hits):
+            detail["stale_returned_but_marked_invalid"] = True
+            return "partial", detail
+        return False, detail
 
     def point_in_time_reconstruction():
         a = f"{agent}-pit"
@@ -76,7 +109,8 @@ def run_regulated_eval(client, agent: str = "reg-eval") -> dict[str, Any]:
         client.add(a, "policy rate is 5.25 percent", _dt(2025, 6, 1),
                    metadata={"ticker": "FED", "metric": "rate"})
         past = _content(client.recall_at(a, "policy rate", _dt(2025, 4, 1), k=5)["memories"])
-        return any("5.00" in c for c in past), {"as_of_value_retrieved": any("5.00" in c for c in past)}
+        found = _any_match(r"5[.,]00?\s*(%|percent)?|\b5\s*(%|percent)\b", past)
+        return found, {"as_of_value_retrieved": found}
 
     def erasure_proof():
         # Full pass requires BOTH: content unrecoverable AND a proof artifact

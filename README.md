@@ -328,7 +328,7 @@ closed cloud. Lians keeps the graph **and** the open compliance spine.
 → [docs/compare-zep.md](docs/compare-zep.md)
 
 → Full benchmark numbers: [docs/benchmark.md](docs/benchmark.md)
-→ Regulated-eval head-to-head (five compliance invariants, Lians **5.0** / Zep **2.0** / mem0 **1.0**): [docs/regulated-eval-results.md](docs/regulated-eval-results.md) — Lians executed live; competitors scored from their public API surface via runnable adapters you can re-run with keys.
+→ Regulated-eval head-to-head (five compliance invariants, Lians **5.0** / Zep–Graphiti **2.0** / mem0 **0.5**): [docs/regulated-eval-results.md](docs/regulated-eval-results.md) — Lians, Graphiti OSS, and mem0 OSS all **executed live** in their default configurations (per-cell evidence in the appendix); remaining columns scored from their public API surface via runnable adapters you can re-run with keys.
 
 ---
 
