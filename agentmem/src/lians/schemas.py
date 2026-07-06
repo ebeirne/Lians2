@@ -489,6 +489,11 @@ class ContextRequest(BaseModel):
     max_tokens: int = Field(default=1500, ge=64, le=32000)
     header: str = "Relevant facts from memory (most recent, non-stale):"
     mmr: bool = False                     # diversity reranking before assembly
+    # Active resurfacing: open conflicts push to the top of every context block
+    # until adjudicated — an unresolved conflict must not silently age out.
+    # Opt out per-call for surfaces where contested facts are handled elsewhere.
+    surface_conflicts: bool = True
+    max_conflicts: int = Field(default=5, ge=0, le=50)
 
 
 class ContextResult(BaseModel):
@@ -497,6 +502,11 @@ class ContextResult(BaseModel):
     token_estimate: int
     truncated: bool                       # True if the budget cut off some facts
     retrieval_degraded: bool = False      # recall ran lexical-only (see RecallResult)
+    # Open conflicts surfaced into the block (oldest first) + the total count
+    # still open for this agent, so callers can alert when the backlog grows
+    # beyond what the block shows.
+    open_conflicts: list[ConflictFlagOut] = Field(default_factory=list)
+    open_conflicts_total: int = 0
 
 
 # ── Graph extraction ────────────────────────────────────────────────────────────

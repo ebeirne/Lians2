@@ -433,6 +433,60 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+async def _agent_open_conflicts(
+    db: AsyncSession,
+    namespace: str,
+    agent_id: str,
+    limit: int,
+) -> tuple[list[ConflictFlagOut], int]:
+    """
+    Open conflicts for one agent, oldest first (the longest-unresolved conflict
+    is the most overdue), plus the total open count. Backs the active-resurfacing
+    section of ``assemble_context``.
+    """
+    from sqlalchemy import func
+
+    conds = and_(
+        ConflictFlag.namespace == namespace,
+        ConflictFlag.agent_id == agent_id,
+        ConflictFlag.status == "open",
+    )
+    total = (await db.execute(select(func.count()).select_from(ConflictFlag).where(conds))).scalar() or 0
+    if total == 0:
+        return [], 0
+
+    flags = (await db.execute(
+        select(ConflictFlag).where(conds).order_by(ConflictFlag.detected_at.asc()).limit(limit)
+    )).scalars().all()
+
+    subject_keys = await _load_namespace_subject_keys(db, namespace)
+    from .ranking import _decrypt
+
+    out: list[ConflictFlagOut] = []
+    for flag in flags:
+        mem_a = await db.get(Memory, flag.memory_a_id)
+        mem_b = await db.get(Memory, flag.memory_b_id)
+        out.append(ConflictFlagOut(
+            id=flag.id,
+            namespace=flag.namespace,
+            agent_id=flag.agent_id,
+            memory_a_id=flag.memory_a_id,
+            memory_b_id=flag.memory_b_id,
+            memory_a_content=_decrypt(mem_a, subject_keys) if mem_a else None,
+            memory_b_content=_decrypt(mem_b, subject_keys) if mem_b else None,
+            memory_a_source=mem_a.source if mem_a else None,
+            memory_b_source=mem_b.source if mem_b else None,
+            memory_a_event_time=mem_a.event_time if mem_a else flag.detected_at,
+            memory_b_event_time=mem_b.event_time if mem_b else flag.detected_at,
+            confidence=flag.confidence,
+            detected_at=flag.detected_at,
+            status=flag.status,
+            resolved_at=flag.resolved_at,
+            resolver_note=flag.resolver_note,
+        ))
+    return out, int(total)
+
+
 async def assemble_context(
     db: AsyncSession,
     namespace: str,
@@ -448,6 +502,11 @@ async def assemble_context(
     Facts are included in relevance order until ``max_tokens`` is reached; each
     line carries event-time and source so the model can reason about recency and
     provenance. Erased (crypto-shredded) facts are skipped.
+
+    Active resurfacing: open conflicts for this agent push to the top of the
+    block (oldest first — they cannot silently age out) until a human
+    adjudicates them, so the model treats contested facts as contested rather
+    than confidently using whichever version recall happened to rank higher.
     """
     from .schemas import ContextResult
     filters: dict[str, Any] = {}
@@ -460,6 +519,32 @@ async def assemble_context(
 
     lines = [req.header]
     used = _estimate_tokens(req.header)
+
+    open_conflicts: list[ConflictFlagOut] = []
+    open_conflicts_total = 0
+    if req.surface_conflicts and req.max_conflicts > 0:
+        open_conflicts, open_conflicts_total = await _agent_open_conflicts(
+            db, namespace, req.agent_id, req.max_conflicts
+        )
+    if open_conflicts:
+        banner = "⚠ UNRESOLVED MEMORY CONFLICTS — contested facts, pending adjudication:"
+        lines.append(banner)
+        used += _estimate_tokens(banner)
+        for c in open_conflicts:
+            a_stamp = c.memory_a_event_time.isoformat()[:16].replace("T", " ")
+            b_stamp = c.memory_b_event_time.isoformat()[:16].replace("T", " ")
+            a_src = f" [{c.memory_a_source}]" if c.memory_a_source else ""
+            b_src = f" [{c.memory_b_source}]" if c.memory_b_source else ""
+            line = (
+                f"- ({a_stamp}){a_src} \"{c.memory_a_content}\" DISAGREES WITH "
+                f"({b_stamp}){b_src} \"{c.memory_b_content}\""
+            )
+            lines.append(line)
+            used += _estimate_tokens(line)
+        if open_conflicts_total > len(open_conflicts):
+            more = f"  (+{open_conflicts_total - len(open_conflicts)} more open conflicts not shown)"
+            lines.append(more)
+            used += _estimate_tokens(more)
     included: list = []
     truncated = False
     for m in result.memories:
@@ -482,6 +567,8 @@ async def assemble_context(
         token_estimate=used,
         truncated=truncated,
         retrieval_degraded=result.retrieval_degraded,
+        open_conflicts=open_conflicts,
+        open_conflicts_total=open_conflicts_total,
     )
 
 
