@@ -15,6 +15,16 @@ from .models import SubjectKey
 from .crypto import generate_subject_key, wrap_subject_key, unwrap_subject_key
 
 
+class SubjectKeyDestroyedError(ValueError):
+    """Write attempted for a subject whose key was crypto-shredded.
+
+    A destroyed key is never re-created: minting a fresh key for the same
+    subject_id would let new content accumulate under an identity the
+    controller already erased (GDPR Art. 17). Callers should surface this
+    as HTTP 410 Gone.
+    """
+
+
 async def get_or_create_subject_key(
     db: AsyncSession,
     subject_id: str,
@@ -39,7 +49,9 @@ async def get_or_create_subject_key(
         return raw_key
 
     if row.destroyed_at is not None:
-        raise ValueError(f"Subject key for {subject_id!r} has been crypto-shredded")
+        raise SubjectKeyDestroyedError(
+            f"Subject key for {subject_id!r} has been crypto-shredded"
+        )
 
     return unwrap_subject_key(bytes(row.enc_key))
 

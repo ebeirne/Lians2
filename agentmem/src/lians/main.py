@@ -2,13 +2,14 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
+from .pii import SubjectKeyDestroyedError
 from .db import get_db as _get_db
 from .api.routes_memory import router as memory_router
 from .api.routes_audit import router as audit_router
@@ -191,9 +192,24 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AgentMem",
     description="Financial-agent memory layer — bitemporal, auditable, erasable",
-    version="0.2.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(SubjectKeyDestroyedError)
+async def _shredded_subject_handler(request: Request, exc: SubjectKeyDestroyedError):
+    # A destroyed subject key is never re-created (GDPR Art. 17), so a write
+    # for that subject is permanently impossible — 410 Gone, not a 500.
+    return JSONResponse(
+        status_code=410,
+        content={
+            "detail": str(exc),
+            "code": "subject_crypto_shredded",
+            "hint": "The subject's encryption key was destroyed by /v1/erase and is never re-created; use a new subject_id for new data.",
+        },
+    )
+
 
 instrument_fastapi(app)
 

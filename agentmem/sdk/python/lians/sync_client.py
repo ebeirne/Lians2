@@ -174,13 +174,17 @@ class LiansClient:
         max_tokens: int = 1500,
         header: Optional[str] = None,
         mmr: bool = False,
+        surface_conflicts: bool = True,
+        max_conflicts: int = 5,
     ) -> dict:
         """Build a token-budgeted, ready-to-inject context block. Returns a dict
-        ``{context, memories, token_estimate, truncated}``."""
+        ``{context, memories, token_estimate, truncated}``. Open conflicts ride
+        at the top until adjudicated; ``surface_conflicts=False`` opts out."""
         return self._loop.run_until_complete(
             self._async.context(
                 agent_id=agent_id, query=query, k=k, as_of=as_of,
                 max_tokens=max_tokens, header=header, mmr=mmr,
+                surface_conflicts=surface_conflicts, max_conflicts=max_conflicts,
             )
         )
 

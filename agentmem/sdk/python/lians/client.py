@@ -265,17 +265,23 @@ class AsyncLiansClient:
         max_tokens: int = 1500,
         header: Optional[str] = None,
         mmr: bool = False,
+        surface_conflicts: bool = True,
+        max_conflicts: int = 5,
     ) -> dict:
         """
         Build a token-budgeted, ready-to-inject context block from recall.
 
         Returns ``{context, memories, token_estimate, truncated}``. The block is
         bitemporal — never contains stale facts. Pass ``as_of`` for point-in-time
-        context and ``mmr=True`` for diversity reranking.
+        context and ``mmr=True`` for diversity reranking. Open conflicts ride at
+        the top of the block until adjudicated; ``surface_conflicts=False`` opts
+        out per call and ``max_conflicts`` bounds them (overflow is an explicit
+        "+N more" line).
         """
         body: dict[str, Any] = {
             "agent_id": agent_id, "query": query, "k": k,
             "max_tokens": max_tokens, "mmr": mmr,
+            "surface_conflicts": surface_conflicts, "max_conflicts": max_conflicts,
         }
         if as_of:
             body["as_of"] = as_of.isoformat()

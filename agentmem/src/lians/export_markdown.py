@@ -13,8 +13,9 @@ the event) is detectable by ``verify_chain``. A footer states the hash, the
 anchoring event, and the verification procedure.
 
 Verification procedure (also stated in the footer):
-  1. Remove the final integrity comment block (everything from the line
-     ``<!-- lians:integrity`` to the end of the file).
+  1. Remove the final integrity comment block **and the single newline
+     separator before it** (everything from the newline immediately preceding
+     the ``<!-- lians:integrity`` line to the end of the file).
   2. SHA-256 the remaining bytes (UTF-8) — must equal ``document_sha256``.
   3. Confirm the audit chain holds an ``export_markdown`` event whose
      ``content_hash`` equals ``document_sha256`` and whose ``row_hash`` matches.
@@ -127,7 +128,8 @@ async def export_memory_markdown(
         f"document_sha256: {document_sha256}",
         f"audit_event_id: {event.id}",
         f"audit_row_hash: {event.row_hash}",
-        "verify: remove this comment block (from the '" + _INTEGRITY_MARK + "' line to EOF),",
+        "verify: remove this comment block AND the single newline before it (everything",
+        "from the newline preceding the '" + _INTEGRITY_MARK + "' line to EOF),",
         "SHA-256 the remaining UTF-8 bytes, compare with document_sha256, then confirm the",
         "audit chain holds an export_markdown event with this content_hash and row_hash.",
         "-->",
