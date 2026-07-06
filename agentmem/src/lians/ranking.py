@@ -41,6 +41,27 @@ W_IMP = 0.15
 
 RECENCY_HALF_LIFE_DAYS = 30.0
 
+# Materiality-weighted decay: a fact's retrieval half-life scales with its
+# stated materiality, so a client instruction or compliance flag stays
+# retrievable long after a passing preference has faded. This is a *ranking*
+# policy only — storage is never decayed; facts persist until superseded or
+# provably erased. The tag is deterministic caller/adapter metadata
+# (``metadata.materiality``), never model-inferred at recall time, so the same
+# query over the same corpus always ranks the same way.
+MATERIALITY_HALF_LIFE_DAYS: dict[str, float] = {
+    "low": 7.0,
+    "standard": RECENCY_HALF_LIFE_DAYS,
+    "high": 120.0,
+    "critical": 365.0,
+}
+
+
+def _materiality_half_life(metadata: Optional[dict]) -> float:
+    tag = (metadata or {}).get("materiality")
+    if isinstance(tag, str):
+        return MATERIALITY_HALF_LIFE_DAYS.get(tag.strip().lower(), RECENCY_HALF_LIFE_DAYS)
+    return RECENCY_HALF_LIFE_DAYS
+
 
 def _cosine(a: list[float], b: list[float]) -> float:
     dot = sum(x * y for x, y in zip(a, b))
@@ -160,12 +181,12 @@ def _bm25_score(query: str, content: str) -> float:
     return score / len(q_tokens)
 
 
-def _recency_decay(event_time: datetime) -> float:
+def _recency_decay(event_time: datetime, half_life_days: float = RECENCY_HALF_LIFE_DAYS) -> float:
     now = datetime.now(timezone.utc)
     if event_time.tzinfo is None:
         event_time = event_time.replace(tzinfo=timezone.utc)
     age_days = (now - event_time).total_seconds() / 86400
-    return math.exp(-math.log(2) * age_days / RECENCY_HALF_LIFE_DAYS)
+    return math.exp(-math.log(2) * age_days / half_life_days)
 
 
 # ── Change 1: present-time recall uses live_facts ────────────────────────────
@@ -290,7 +311,7 @@ def _score_live(
     emb = list(fact.embedding) if fact.embedding is not None else None
     sem = _cosine(query_embedding, emb) if emb else 0.0
     lex = _bm25_score(query, content or "") if content else 0.0
-    rec = _recency_decay(fact.event_time)
+    rec = _recency_decay(fact.event_time, _materiality_half_life(fact.metadata_))
     score = W_SEM * sem + W_LEX * lex + W_REC * rec + W_IMP * fact.importance
     return score, content
 
@@ -305,7 +326,7 @@ def _score_historical(
     emb = list(mem.embedding) if mem.embedding is not None else None
     sem = _cosine(query_embedding, emb) if emb else 0.0
     lex = _bm25_score(query, content or "") if content else 0.0
-    rec = _recency_decay(mem.event_time)
+    rec = _recency_decay(mem.event_time, _materiality_half_life(mem.metadata_))
     score = W_SEM * sem + W_LEX * lex + W_REC * rec + W_IMP * mem.importance
     return score, content
 

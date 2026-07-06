@@ -62,24 +62,33 @@ def pytest_configure(config):
     if not compose_file.exists():
         return
 
-    # Bring up only the postgres service (idempotent if already running)
-    subprocess.run(
-        ["docker", "compose", "-f", str(compose_file), "up", "-d", "postgres"],
-        capture_output=True,
-        timeout=60,
-        cwd=str(_COMPOSE_DIR),
-    )
+    # Bring up only the postgres service (idempotent if already running).
+    # A half-started Docker daemon can hang any of these calls — treat every
+    # failure (including TimeoutExpired) as "no Docker" and skip provisioning
+    # rather than crashing collection with an INTERNALERROR.
+    try:
+        subprocess.run(
+            ["docker", "compose", "-f", str(compose_file), "up", "-d", "postgres"],
+            capture_output=True,
+            timeout=60,
+            cwd=str(_COMPOSE_DIR),
+        )
+    except Exception:
+        return
 
     # Wait up to 30 s for Postgres to accept connections
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
-        r = subprocess.run(
-            ["docker", "compose", "-f", str(compose_file),
-             "exec", "-T", "postgres", "pg_isready", "-U", "agentmem"],
-            capture_output=True,
-            timeout=5,
-            cwd=str(_COMPOSE_DIR),
-        )
+        try:
+            r = subprocess.run(
+                ["docker", "compose", "-f", str(compose_file),
+                 "exec", "-T", "postgres", "pg_isready", "-U", "agentmem"],
+                capture_output=True,
+                timeout=5,
+                cwd=str(_COMPOSE_DIR),
+            )
+        except Exception:
+            return
         if r.returncode == 0:
             break
         time.sleep(1)
