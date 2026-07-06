@@ -32,7 +32,7 @@ fresh `pip install lians-sdk[local]`.
 >
 > This repo reproduces it end to end with zero API keys: same strategy, same
 > data, same memory store, run twice. Present-time retrieval: +44%, Sharpe 4.6.
-> Retrieval pinned to decision time (`as_of`): −4%, Sharpe −0.6. The diff
+> Retrieval pinned to decision time (`as_of`): −6%, Sharpe −0.8. The diff
 > between the runs is literally one parameter. Every leaked retrieval is logged
 > with its creation timestamp — 918 receipts across 124 trading days.
 >
@@ -81,7 +81,7 @@ fresh `pip install lians-sdk[local]`.
 > whether retrieval is pinned to decision time.
 >
 > - Naive retrieval: +44%, Sharpe 4.6 (fiction)
-> - Point-in-time retrieval: −4%, Sharpe −0.6 (the strategy is deliberately dumb — that's the point)
+> - Point-in-time retrieval: −6%, Sharpe −0.8 (the strategy is deliberately dumb — that's the point)
 > - Full receipts: 918 retrievals of not-yet-existing notes, each logged with
 >   decision timestamp vs note creation timestamp
 >
@@ -107,7 +107,7 @@ fresh `pip install lians-sdk[local]`.
 >
 > Same strategy, same data, same memory store, run twice:
 > • naive retrieval → +44%, Sharpe 4.6
-> • retrieval pinned to decision time → −4%, Sharpe −0.6
+> • retrieval pinned to decision time → −6%, Sharpe −0.8
 >
 > The difference is one parameter. The +44% is fiction. [chart]
 
