@@ -23,11 +23,12 @@ Usage::
         llm=my_llm,
     )
 
-Three tools are returned:
+Four tools are returned:
 
 - ``remember_fact``   — store a financial fact with its event timestamp
 - ``recall_facts``    — retrieve current memories by semantic search
 - ``recall_facts_at`` — retrieve memories valid at a specific past date (compliance)
+- ``flush_memory``    — batch-persist durable facts before context compaction
 
 The ``recall_facts_at`` tool queries memories as they were at a specific past date.
 mem0 has no bitemporal model. Graphiti/Zep has temporal graph queries but no
@@ -209,4 +210,45 @@ def build_crewai_tools(client: Any, agent_id: str) -> list:
             result = client.recall(agent_id=agent_id, query=query, k=k, as_of=as_of)
             return f"Memories valid as of {as_of_iso[:10]}:\n{_fmt(result.get('memories', []))}"
 
-    return [RememberFact(), RecallFacts(), RecallFactsAt()]
+    class _FlushInput(BaseModel):
+        facts_json: str = Field(
+            ...,
+            description=(
+                "JSON array of durable fact strings to persist before compaction. "
+                "Example: '[\"Client approved the Q3 rebalance\", "
+                "\"Compliance: no tobacco exposure\"]'"
+            ),
+        )
+
+    class FlushMemory(BaseTool):
+        name: str = "flush_memory"
+        description: str = (
+            "Persist a batch of durable facts NOW, before the conversation is "
+            "summarized or truncated. Anything not written here may be lost when "
+            "older turns are compacted away. Extract the facts worth keeping — "
+            "decisions, constraints, client instructions, corrections, commitments — "
+            "not chit-chat. Each write is tagged as a pre-compaction flush in the "
+            "tamper-evident audit chain."
+        )
+        args_schema: type[BaseModel] = _FlushInput
+
+        def _run(self, facts_json: str) -> str:
+            from datetime import timezone
+            facts = json.loads(facts_json) if isinstance(facts_json, str) else facts_json
+            now = datetime.now(timezone.utc)
+            written = 0
+            for fact in facts or []:
+                text = str(fact).strip()
+                if not text:
+                    continue
+                client.add(
+                    agent_id=agent_id,
+                    content=text,
+                    event_time=now,
+                    metadata={"_flush": "pre_compaction"},
+                    source="crewai_flush",
+                )
+                written += 1
+            return f"Flushed {written} durable fact(s) to memory before compaction."
+
+    return [RememberFact(), RecallFacts(), RecallFactsAt(), FlushMemory()]

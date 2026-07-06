@@ -244,6 +244,85 @@ def create_batch_remember_node(
     return _batch_node
 
 
+def create_flush_node(
+    client: Any,
+    agent_id: str,
+    *,
+    messages_key: str = "messages",
+    context_limit_tokens: int = 128_000,
+    threshold: float = 0.8,
+    roles: tuple = ("assistant",),
+    result_key: str = "compaction_flush",
+):
+    """
+    Create a LangGraph node that flushes durable facts before context compaction.
+
+    Long-running graphs lose granular facts at the context cliff: the framework
+    summarizes old turns and whatever the summary drops is gone. Insert this
+    node before your summarize/compact step (or on every loop iteration — it
+    only fires past the threshold). It estimates token usage of
+    ``state[messages_key]``; once usage crosses ``threshold × context_limit_
+    tokens``, each not-yet-empty message with a role in ``roles`` is persisted,
+    tagged ``_flush: "pre_compaction"`` so the audit chain shows when the agent
+    externalized what it knew.
+
+    Writes ``state[result_key]`` with ``{"flushed": n}`` (``{"flushed": 0}``
+    when under the threshold).
+
+    Works with both sync and async Lians clients. Messages may be dicts
+    (``{"role", "content"}``) or LangChain message objects (``.type``/
+    ``.content``).
+    """
+    _add_is_async = asyncio.iscoroutinefunction(getattr(client, "add", None))
+
+    def _role(m: Any) -> str:
+        if isinstance(m, dict):
+            return str(m.get("role", ""))
+        # LangChain message objects: .type is "ai" / "human" / "system"
+        t = str(getattr(m, "type", ""))
+        return {"ai": "assistant", "human": "user"}.get(t, t)
+
+    def _content(m: Any) -> str:
+        raw = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+        return raw if isinstance(raw, str) else str(raw)
+
+    async def _flush_node(state: dict) -> dict:
+        messages = state.get(messages_key) or []
+        used = sum(max(1, len(_content(m)) // 4) for m in messages if _content(m))
+        if used < threshold * context_limit_tokens:
+            return {result_key: {"flushed": 0}}
+
+        now = datetime.now(timezone.utc)
+        flushed = 0
+        for m in messages:
+            if _role(m) not in roles:
+                continue
+            content = _content(m)
+            if not content.strip():
+                continue
+            kwargs: dict[str, Any] = dict(
+                agent_id=agent_id,
+                content=content,
+                event_time=now,
+                metadata={"_flush": "pre_compaction"},
+                source="langgraph_flush",
+            )
+            if _add_is_async:
+                await client.add(**kwargs)
+            else:
+                # Sync clients (e.g. LocalLiansClient) drive their own event
+                # loop internally — calling them on this thread would raise
+                # "Cannot run the event loop while another loop is running".
+                await asyncio.get_event_loop().run_in_executor(
+                    None, lambda kw=kwargs: client.add(**kw)
+                )
+            flushed += 1
+
+        return {result_key: {"flushed": flushed}}
+
+    return _flush_node
+
+
 # ── Typed state helper ────────────────────────────────────────────────────────
 
 def format_memories_for_prompt(memories: list[dict]) -> str:

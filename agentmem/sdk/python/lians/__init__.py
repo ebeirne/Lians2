@@ -48,6 +48,7 @@ from .sync_client import LiansClient
 from .client import AsyncLiansClient
 from .harness import (
     LiansMemoryHarness,
+    CompactionGuard,
     RecalledMemory,
     TurnResult,
     MemoryClient,
@@ -73,6 +74,7 @@ __all__ = [
     "LocalLiansClient",
     # Agent harness
     "LiansMemoryHarness",
+    "CompactionGuard",
     "RecalledMemory",
     "TurnResult",
     "MemoryClient",

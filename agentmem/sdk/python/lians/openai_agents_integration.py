@@ -26,11 +26,12 @@ Usage::
     )
     result = await Runner.run(agent, "What guidance did NVDA give last quarter?")
 
-Three tools are returned:
+Four tools are returned:
 
 - ``agentmem_remember``       — store a fact with its event timestamp and metadata
 - ``agentmem_recall``         — retrieve current facts by semantic search
 - ``agentmem_recall_at``      — retrieve facts valid at a specific past date (compliance)
+- ``agentmem_flush``          — batch-persist durable facts before context compaction
 
 The ``agentmem_recall_at`` tool is the compliance differentiator:
 it answers "what did the model know before the trade?" with a verifiable,
@@ -177,4 +178,43 @@ def build_openai_agent_tools(client: Any, agent_id: str) -> list:
         result = client.recall(agent_id=agent_id, query=query, k=k, as_of=as_of)
         return f"Facts valid as of {as_of_iso[:10]}:\n{_fmt(result.get('memories', []))}"
 
-    return [agentmem_remember, agentmem_recall, agentmem_recall_at]
+    @function_tool
+    def agentmem_flush(facts_json: str) -> str:
+        """
+        Persist a batch of durable facts NOW, before context compaction.
+
+        Call this when the conversation is about to be summarized or truncated
+        (or when instructed that the context window is nearly full). Anything
+        not written here may be lost when older turns are compacted away.
+        Review the conversation and extract the facts worth keeping: decisions
+        made, constraints learned, client instructions, corrections, and
+        commitments — not chit-chat.
+
+        Each write is tagged as a pre-compaction flush in the tamper-evident
+        audit chain, so it is provable when the agent externalized what it knew.
+
+        Parameters
+        ----------
+        facts_json:
+            JSON array of fact strings.
+            Example: '["Client approved the Q3 rebalance on 2026-07-01",
+            "Compliance: no tobacco exposure in any account"]'
+        """
+        facts = json.loads(facts_json) if isinstance(facts_json, str) else facts_json
+        now = datetime.now(timezone.utc)
+        written = 0
+        for fact in facts or []:
+            text = str(fact).strip()
+            if not text:
+                continue
+            client.add(
+                agent_id=agent_id,
+                content=text,
+                event_time=now,
+                metadata={"_flush": "pre_compaction"},
+                source="openai_agents_flush",
+            )
+            written += 1
+        return f"Flushed {written} durable fact(s) to memory before compaction."
+
+    return [agentmem_remember, agentmem_recall, agentmem_recall_at, agentmem_flush]

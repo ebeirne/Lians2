@@ -43,11 +43,12 @@ Usage — ConversableAgent (AutoGen v0.2 / classic)::
         function_map=function_map,
     )
 
-Three tools are returned by build_autogen_tools():
+Four tools are returned by build_autogen_tools():
 
 - ``agentmem_remember``    — store a fact with event timestamp and metadata
 - ``agentmem_recall``      — retrieve current facts by semantic search
 - ``agentmem_recall_at``   — retrieve facts valid at a specific past date (compliance)
+- ``agentmem_flush``       — batch-persist durable facts before context compaction
 
 The ``agentmem_recall_at`` tool supports AutoGen multi-agent compliance workflows:
 "What did the risk-assessment agent know before the trade was placed?" — with a
@@ -184,10 +185,47 @@ def build_autogen_tools(client: Any, agent_id: str) -> list:
             result = client.recall(agent_id=agent_id, query=query, k=k, as_of=as_of)
         return f"Facts valid as of {as_of_iso[:10]}:\n{_fmt(result.get('memories', []))}"
 
+    async def agentmem_flush(facts_json: str) -> str:
+        """
+        Persist a batch of durable facts NOW, before context compaction.
+
+        Call when the conversation is about to be summarized or truncated —
+        anything not written here may be lost when older turns are compacted
+        away. Extract the facts worth keeping (decisions, constraints, client
+        instructions, corrections, commitments), not chit-chat. Each write is
+        tagged as a pre-compaction flush in the tamper-evident audit chain.
+
+        :param facts_json: JSON array of fact strings.
+            Example: '["Client approved the Q3 rebalance",
+            "Compliance: no tobacco exposure"]'
+        """
+        from datetime import timezone
+        facts = json.loads(facts_json) if isinstance(facts_json, str) else facts_json
+        now = datetime.now(timezone.utc)
+        written = 0
+        for fact in facts or []:
+            text = str(fact).strip()
+            if not text:
+                continue
+            kwargs: dict[str, Any] = dict(
+                agent_id=agent_id,
+                content=text,
+                event_time=now,
+                metadata={"_flush": "pre_compaction"},
+                source="autogen_flush",
+            )
+            if _is_async:
+                await client.add(**kwargs)
+            else:
+                client.add(**kwargs)
+            written += 1
+        return f"Flushed {written} durable fact(s) to memory before compaction."
+
     return [
         FunctionTool(agentmem_remember, description=agentmem_remember.__doc__ or ""),
         FunctionTool(agentmem_recall,   description=agentmem_recall.__doc__ or ""),
         FunctionTool(agentmem_recall_at, description=agentmem_recall_at.__doc__ or ""),
+        FunctionTool(agentmem_flush,    description=agentmem_flush.__doc__ or ""),
     ]
 
 

@@ -475,6 +475,93 @@ class LiansMemoryHarness:
             raise ValueError("no subject_id to erase (set one on the harness or pass it)")
         return self.client.erase(subject_id=sid, request_ref=request_ref)  # type: ignore[attr-defined]
 
+    # ── Pre-compaction flush ──────────────────────────────────────────────────
+
+    def flush_before_compaction(
+        self,
+        messages: Optional[Sequence[dict[str, Any]]] = None,
+        *,
+        facts: Optional[Sequence[str]] = None,
+        extract: Optional[Callable[[str], Sequence[str]]] = None,
+        roles: Optional[list[str]] = None,
+        metadata: Optional[dict[str, Any]] = None,
+        importance: Optional[float] = None,
+        event_time: Optional[datetime] = None,
+    ) -> dict[str, Any]:
+        """
+        Persist durable facts NOW, before the host framework compacts or
+        summarizes the conversation out of existence.
+
+        Long-running agents lose granular facts at the context cliff: the
+        framework summarizes old turns, and whatever the summary drops is gone.
+        Call this when the conversation nears its context limit (see
+        :class:`CompactionGuard` for automatic tracking) so the durable facts
+        cross into governed memory first. Every write is tagged
+        ``_flush: "pre_compaction"``, so the audit chain shows *when* the agent
+        externalized what it knew — the flush itself is evidence.
+
+        Provide exactly one source of facts, checked in this order:
+
+        ``facts``
+            Pre-extracted durable facts — one write per string.
+        ``extract`` + ``messages``
+            ``extract(transcript_text)`` returns the facts to write. Pass an
+            LLM-backed extractor here to reproduce OpenClaw's "silent agentic
+            turn" with your own model.
+        ``messages``
+            Fallback: persists messages whose role is in ``roles`` (default:
+            assistant) via :meth:`remember_messages`, or one :meth:`remember`
+            per message when the client lacks ``add_from_messages``.
+
+        Returns ``{"flushed": <n writes>, "mode": <facts|extract|messages>}``.
+        """
+        meta = dict(metadata or {})
+        meta.setdefault("_flush", "pre_compaction")
+
+        if facts is not None:
+            written = 0
+            for fact in facts:
+                if fact and str(fact).strip():
+                    self.remember(
+                        str(fact), metadata=meta,
+                        importance=importance, event_time=event_time,
+                    )
+                    written += 1
+            return {"flushed": written, "mode": "facts"}
+
+        if messages is None:
+            raise ValueError("flush_before_compaction needs `facts` or `messages`")
+
+        if extract is not None:
+            transcript = "\n".join(
+                f"{m.get('role', '?')}: {m.get('content', '')}" for m in messages
+            )
+            extracted = [f for f in (extract(transcript) or []) if f and str(f).strip()]
+            for fact in extracted:
+                self.remember(
+                    str(fact), metadata=meta,
+                    importance=importance, event_time=event_time,
+                )
+            return {"flushed": len(extracted), "mode": "extract"}
+
+        wanted = roles or ["assistant"]
+        if hasattr(self.client, "add_from_messages"):
+            self.remember_messages(
+                messages, metadata=meta, importance=importance,
+                event_time=event_time, roles=wanted,
+            )
+            written = sum(1 for m in messages if m.get("role") in wanted and m.get("content"))
+        else:
+            written = 0
+            for m in messages:
+                if m.get("role") in wanted and m.get("content"):
+                    self.remember(
+                        str(m["content"]), metadata=meta,
+                        importance=importance, event_time=event_time,
+                    )
+                    written += 1
+        return {"flushed": written, "mode": "messages"}
+
     # ── Internal ──────────────────────────────────────────────────────────────
 
     def _scoped_metadata(self, extra: Optional[dict[str, Any]]) -> dict[str, Any]:
@@ -503,6 +590,104 @@ class LiansMemoryHarness:
             raise AttributeError(
                 f"client does not support `{attr}` — use a hosted/local Lians client"
             )
+
+
+# ── Compaction guard ───────────────────────────────────────────────────────────
+
+
+def _estimate_tokens(text: str) -> int:
+    """Cheap token estimate (~4 chars/token) — matches the server's budgeting."""
+    return max(1, len(text) // 4)
+
+
+class CompactionGuard:
+    """
+    Track conversation size and flush durable facts before the context cliff.
+
+    Wire it into any agent loop: call :meth:`observe` with each turn's text (or
+    :meth:`observe_messages` with the running message list), and when the
+    estimated usage crosses ``threshold`` × ``context_limit_tokens`` the guard
+    fires :meth:`LiansMemoryHarness.flush_before_compaction` — once — then
+    waits for :meth:`reset` (call it after the host framework actually
+    compacts/summarizes).
+
+    Example::
+
+        guard = CompactionGuard(harness, context_limit_tokens=128_000)
+
+        for turn in conversation:
+            ...
+            flushed = guard.observe_and_maybe_flush(messages)
+            if flushed:
+                log.info("pre-compaction flush wrote %s facts", flushed["flushed"])
+    """
+
+    def __init__(
+        self,
+        harness: LiansMemoryHarness,
+        *,
+        context_limit_tokens: int,
+        threshold: float = 0.8,
+        estimate: Callable[[str], int] = _estimate_tokens,
+        extract: Optional[Callable[[str], Sequence[str]]] = None,
+        roles: Optional[list[str]] = None,
+    ) -> None:
+        if context_limit_tokens <= 0:
+            raise ValueError("context_limit_tokens must be positive")
+        if not 0.0 < threshold <= 1.0:
+            raise ValueError("threshold must be in (0, 1]")
+        self.harness = harness
+        self.context_limit_tokens = context_limit_tokens
+        self.threshold = threshold
+        self.estimate = estimate
+        self.extract = extract
+        self.roles = roles
+        self.used_tokens = 0
+        self._flushed_this_window = False
+
+    def observe(self, *texts: str) -> None:
+        """Accumulate token usage for ad-hoc text (prompts, responses, tools)."""
+        for t in texts:
+            if t:
+                self.used_tokens += self.estimate(str(t))
+
+    def observe_messages(self, messages: Sequence[dict[str, Any]]) -> None:
+        """Set usage from a full running message list (idempotent per call)."""
+        self.used_tokens = sum(
+            self.estimate(str(m.get("content", ""))) for m in messages if m.get("content")
+        )
+
+    def should_flush(self) -> bool:
+        return (
+            not self._flushed_this_window
+            and self.used_tokens >= self.threshold * self.context_limit_tokens
+        )
+
+    def observe_and_maybe_flush(
+        self,
+        messages: Sequence[dict[str, Any]],
+        **flush_kwargs: Any,
+    ) -> Optional[dict[str, Any]]:
+        """
+        One-call loop hook: update usage from ``messages`` and flush if the
+        window crossed the threshold. Returns the flush result, or None.
+        """
+        self.observe_messages(messages)
+        if not self.should_flush():
+            return None
+        result = self.harness.flush_before_compaction(
+            messages,
+            extract=flush_kwargs.pop("extract", self.extract),
+            roles=flush_kwargs.pop("roles", self.roles),
+            **flush_kwargs,
+        )
+        self._flushed_this_window = True
+        return result
+
+    def reset(self) -> None:
+        """Call after the host framework compacts — starts a fresh window."""
+        self.used_tokens = 0
+        self._flushed_this_window = False
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
