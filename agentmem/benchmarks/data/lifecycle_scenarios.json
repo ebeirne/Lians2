@@ -1,0 +1,175 @@
+{
+  "description": "Lifecycle eval scenarios: state reconstruction, temporal disambiguation, and mid-task interjections. Dates are event_time (UTC noon). 'keys' are used only in --mode keyed; raw mode stores text alone. Matching is case-insensitive substring, same as memory_eval.",
+  "scenarios": [
+    {
+      "id": "diet-drift",
+      "category": "state_reconstruction",
+      "events": [
+        {"date": "2026-01-05", "text": "I'm vegan — no meat, no fish, no dairy.", "keys": {"entity": "user", "field": "diet"}},
+        {"date": "2026-02-10", "text": "Wait, I eat fish now. I'm pescatarian these days.", "keys": {"entity": "user", "field": "diet"}},
+        {"date": "2026-03-02", "text": "Actually, I found out I'm allergic to salmon specifically.", "keys": {"entity": "user", "field": "allergy"}},
+        {"date": "2026-01-12", "text": "My favorite cuisine is Thai food.", "keys": {"entity": "user", "field": "favorite_cuisine"}}
+      ],
+      "profile": {
+        "diet": {"current": "pescatarian", "stale": ["vegan"]},
+        "allergy": {"current": "salmon"},
+        "favorite_cuisine": {"current": "thai"}
+      },
+      "checkpoints": [
+        {"as_of": "2026-01-20", "profile": {"diet": {"current": "vegan", "absent": ["pescatarian", "salmon"]}}}
+      ],
+      "probes": [
+        {"query": "What is the user's diet?", "answer": "pescatarian", "stale": "vegan"},
+        {"query": "What food restrictions or allergies does the user have?", "answer": "salmon"},
+        {"query": "What is the user's diet?", "as_of": "2026-01-20", "answer": "vegan", "stale": "pescatarian"}
+      ]
+    },
+    {
+      "id": "relocation-career",
+      "category": "state_reconstruction",
+      "events": [
+        {"date": "2025-09-15", "text": "I live in Chicago, in Lincoln Park.", "keys": {"entity": "user", "field": "home_city"}},
+        {"date": "2025-09-20", "text": "I work as a data analyst at Acme Corp.", "keys": {"entity": "user", "field": "job"}},
+        {"date": "2026-01-08", "text": "Big news: I got promoted to analytics manager at Acme Corp.", "keys": {"entity": "user", "field": "job"}},
+        {"date": "2026-04-14", "text": "I moved to Denver last week for the mountains.", "keys": {"entity": "user", "field": "home_city"}},
+        {"date": "2026-06-01", "text": "I left Acme and started as head of data at Beta Systems.", "keys": {"entity": "user", "field": "job"}},
+        {"date": "2025-10-02", "text": "My dog is a golden retriever named Biscuit.", "keys": {"entity": "user", "field": "pet"}}
+      ],
+      "profile": {
+        "home_city": {"current": "denver", "stale": ["chicago"]},
+        "job": {"current": "beta systems", "stale": ["data analyst at acme", "analytics manager at acme"]},
+        "pet": {"current": "biscuit"}
+      },
+      "checkpoints": [
+        {"as_of": "2026-02-01", "profile": {
+          "home_city": {"current": "chicago", "absent": ["denver"]},
+          "job": {"current": "analytics manager", "absent": ["beta systems"]}
+        }},
+        {"as_of": "2025-11-01", "profile": {
+          "job": {"current": "data analyst", "absent": ["manager", "beta systems"]}
+        }}
+      ],
+      "probes": [
+        {"query": "Where does the user live?", "answer": "denver", "stale": "chicago"},
+        {"query": "What is the user's current job?", "answer": "beta systems", "stale": "analytics manager at acme"},
+        {"query": "Where did the user live in late 2025?", "as_of": "2026-02-01", "answer": "chicago", "stale": "denver"},
+        {"query": "What kind of pet does the user have?", "answer": "biscuit"}
+      ]
+    },
+    {
+      "id": "contact-prefs",
+      "category": "state_reconstruction",
+      "events": [
+        {"date": "2026-02-03", "text": "Best way to reach me is email, I check it constantly.", "keys": {"entity": "user", "field": "contact_channel"}},
+        {"date": "2026-02-03", "text": "My birthday is March 14th.", "keys": {"entity": "user", "field": "birthday"}},
+        {"date": "2026-05-19", "text": "Stop emailing me — ping me on Slack instead, email is a black hole now.", "keys": {"entity": "user", "field": "contact_channel"}},
+        {"date": "2026-03-30", "text": "I'm on Eastern Time.", "keys": {"entity": "user", "field": "timezone"}},
+        {"date": "2026-06-22", "text": "I switched to Pacific Time after the move.", "keys": {"entity": "user", "field": "timezone"}}
+      ],
+      "profile": {
+        "contact_channel": {"current": "slack", "stale": ["best way to reach me is email"]},
+        "birthday": {"current": "march 14"},
+        "timezone": {"current": "pacific", "stale": ["eastern"]}
+      },
+      "checkpoints": [
+        {"as_of": "2026-04-15", "profile": {
+          "contact_channel": {"current": "email", "absent": ["slack"]},
+          "timezone": {"current": "eastern", "absent": ["pacific"]}
+        }}
+      ],
+      "probes": [
+        {"query": "How should I contact the user?", "answer": "slack", "stale": "best way to reach me is email"},
+        {"query": "What timezone is the user in?", "answer": "pacific", "stale": "eastern"},
+        {"query": "When is the user's birthday?", "answer": "march 14"}
+      ]
+    },
+    {
+      "id": "meeting-notes-lead",
+      "category": "temporal_disambiguation",
+      "events": [
+        {"date": "2024-06-11", "text": "Meeting notes: project Aurora lead is Sarah Chen; kickoff planned for Q3 2024.", "keys": {"entity": "project_aurora", "field": "lead"}},
+        {"date": "2024-06-11", "text": "Meeting notes: Aurora budget approved at $1.2M.", "keys": {"entity": "project_aurora", "field": "budget"}},
+        {"date": "2026-02-18", "text": "Org update: Marcus Webb has taken over as project Aurora lead after Sarah Chen moved to the platform team.", "keys": {"entity": "project_aurora", "field": "lead"}},
+        {"date": "2026-03-05", "text": "Aurora budget revised upward to $2.1M for the expanded scope.", "keys": {"entity": "project_aurora", "field": "budget"}}
+      ],
+      "profile": {
+        "lead": {"current": "marcus webb", "stale": ["sarah chen is", "lead is sarah"]},
+        "budget": {"current": "$2.1m", "stale": ["$1.2m"]}
+      },
+      "checkpoints": [
+        {"as_of": "2025-06-01", "profile": {
+          "lead": {"current": "sarah chen", "absent": ["marcus webb"]},
+          "budget": {"current": "$1.2m", "absent": ["$2.1m"]}
+        }}
+      ],
+      "probes": [
+        {"query": "Who leads project Aurora?", "answer": "marcus webb", "stale": "lead is sarah"},
+        {"query": "Who led project Aurora in 2025?", "as_of": "2025-06-01", "answer": "sarah chen", "stale": "marcus webb"},
+        {"query": "What is the Aurora project budget?", "answer": "$2.1m", "stale": "$1.2m"}
+      ]
+    },
+    {
+      "id": "rate-history-out-of-order",
+      "category": "temporal_disambiguation",
+      "comment": "Ingestion order deliberately differs from event order: the 2025 rate arrives last. Correct behavior keys off event_time, not arrival order — a backdated fact must not supersede a newer one.",
+      "events": [
+        {"date": "2024-03-01", "text": "Consulting agreement with Northwind: rate is $150 per hour.", "keys": {"entity": "northwind", "field": "hourly_rate"}},
+        {"date": "2026-01-15", "text": "Northwind renewal signed: rate is now $190 per hour.", "keys": {"entity": "northwind", "field": "hourly_rate"}},
+        {"date": "2025-02-20", "text": "Mid-term amendment (Feb 2025): Northwind rate adjusted to $175 per hour.", "keys": {"entity": "northwind", "field": "hourly_rate"}}
+      ],
+      "profile": {
+        "hourly_rate": {"current": "$190", "stale": ["$150", "$175"]}
+      },
+      "checkpoints": [
+        {"as_of": "2025-07-01", "profile": {"hourly_rate": {"current": "$175", "absent": ["$190"]}}},
+        {"as_of": "2024-09-01", "profile": {"hourly_rate": {"current": "$150", "absent": ["$175", "$190"]}}}
+      ],
+      "probes": [
+        {"query": "What is the current Northwind hourly rate?", "answer": "$190", "stale": "$150"},
+        {"query": "What was the Northwind rate in mid 2025?", "as_of": "2025-07-01", "answer": "$175", "stale": "$190"}
+      ]
+    },
+    {
+      "id": "flight-booking-flowers",
+      "category": "interjection",
+      "comment": "Background fact injected mid-task must be stored without derailing task memory: birthday recallable on its own, and task queries not polluted by it.",
+      "events": [
+        {"date": "2026-06-10", "text": "I need to book a flight to Austin for the Fabric conference, June 24th to 27th.", "keys": null},
+        {"date": "2026-06-10", "text": "Aisle seat please, and I'd rather not fly before 9am.", "keys": null},
+        {"date": "2026-06-10", "text": "Oh wait, before I forget — my mother's birthday is June 5th, remind me to buy her flowers every year.", "keys": null},
+        {"date": "2026-06-10", "text": "OK back to the flight — Delta or United preferred, I have status on both.", "keys": null},
+        {"date": "2026-06-10", "text": "Book the return for the evening of the 27th so I can make the closing session.", "keys": null}
+      ],
+      "profile": {
+        "mother_birthday": {"current": "june 5"},
+        "trip_destination": {"current": "austin"}
+      },
+      "checkpoints": [],
+      "probes": [
+        {"query": "When is the user's mother's birthday?", "answer": "june 5"},
+        {"query": "What are the user's flight plans for the conference?", "answer": "austin", "k": 3, "must_not_contain": "birthday"},
+        {"query": "What are the user's airline and seating preferences?", "answer": "aisle", "k": 3, "must_not_contain": "flowers"}
+      ]
+    },
+    {
+      "id": "report-gym-switch",
+      "category": "interjection",
+      "events": [
+        {"date": "2026-05-04", "text": "I'm drafting the Q2 revenue report; the deadline is May 15th and finance wants regional splits this quarter.", "keys": null},
+        {"date": "2026-05-04", "text": "By the way, I changed gyms — I'm at Ironworks on 5th now, mornings before work.", "keys": null},
+        {"date": "2026-05-04", "text": "For the report, use the same template as Q1 but add the EMEA breakdown tab.", "keys": null},
+        {"date": "2026-05-11", "text": "Back on the Q2 report: finance moved the deadline up to May 13th.", "keys": null}
+      ],
+      "profile": {
+        "gym": {"current": "ironworks"},
+        "report_deadline": {"current": "may 13", "stale": ["may 15"]}
+      },
+      "checkpoints": [],
+      "probes": [
+        {"query": "Where does the user go to the gym?", "answer": "ironworks"},
+        {"query": "When is the Q2 revenue report due?", "answer": "may 13", "stale": "deadline is may 15"},
+        {"query": "What should the Q2 report include?", "answer": "emea", "k": 2, "must_not_contain": "gym"}
+      ]
+    }
+  ]
+}

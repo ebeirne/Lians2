@@ -1,0 +1,47 @@
+{
+  "description": "Hidden personas for the agent-to-agent simulator (agent_sim.py). The user-LLM roleplays the persona across sessions, weaving in the listed facts naturally (including revisions and mid-task interjections). Probes are scored deterministically after the run.",
+  "personas": [
+    {
+      "id": "maya-freelancer",
+      "profile": "Maya, a freelance product designer in her 30s. Chatty, jumps between topics mid-thought, often interrupts a task to mention personal details.",
+      "sessions": [
+        {
+          "date": "2026-05-04",
+          "goal": "Get help planning a client kickoff workshop for a fintech client called Loomis.",
+          "must_mention": [
+            "She is vegetarian.",
+            "Her studio is in Portland.",
+            "Mid-task interjection: her sister's wedding is on August 22nd and she needs a reminder to book travel."
+          ],
+          "turns": 6
+        },
+        {
+          "date": "2026-05-18",
+          "goal": "Draft a pricing proposal for the Loomis project.",
+          "must_mention": [
+            "Correction: she now eats fish — call her pescatarian.",
+            "Her day rate is $900."
+          ],
+          "turns": 5
+        },
+        {
+          "date": "2026-06-09",
+          "goal": "Return to the workshop plan and adjust the agenda.",
+          "must_mention": [
+            "Update: her day rate went up to $1100 after the Loomis renewal.",
+            "Interjection: she adopted a cat named Pixel."
+          ],
+          "turns": 5
+        }
+      ],
+      "probes": [
+        {"query": "What are the user's dietary restrictions?", "answer": "pescatarian", "stale": "vegetarian"},
+        {"query": "What is the user's day rate?", "answer": "1100", "stale": "$900"},
+        {"query": "When is the user's sister's wedding?", "answer": "august 22"},
+        {"query": "What pet does the user have?", "answer": "pixel"},
+        {"query": "Where is the user's studio?", "answer": "portland"},
+        {"query": "What was the user's day rate in mid May?", "as_of": "2026-05-25", "answer": "900", "stale": "1100"}
+      ]
+    }
+  ]
+}
