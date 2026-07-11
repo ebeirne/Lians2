@@ -66,6 +66,14 @@ CONTEXT_SMOOTHING_MAX_GAP_S = float(os.getenv("RECALL_CONTEXT_SMOOTHING_MAX_GAP_
 # retrieves the wrong instance. Deterministic — regex date parse, no model.
 TEMPORAL_GROUNDING_BONUS = float(os.getenv("RECALL_TEMPORAL_GROUNDING_BONUS", "0.1"))
 
+# Stale-clause demotion: a turn whose extracted interjection clause was later
+# superseded still contains the stale text (interjection.py stores clauses as
+# derived memories; supersession closes the clause, not the multi-fact parent).
+# Each closure is timestamped on the parent (metadata._stale_clauses); parents
+# are demoted per closure already effective at query time, so as_of recall
+# before the revision is untouched. Additive on the blended score, capped at 2.
+STALE_CLAUSE_PENALTY = float(os.getenv("RECALL_STALE_CLAUSE_PENALTY", "0.15"))
+
 _MONTHS = ("january february march april may june july august september "
            "october november december").split()
 _MONTH_RE = "|".join(_MONTHS)
@@ -406,6 +414,47 @@ def _score_components(
     return sem, lex, W_REC * rec + W_IMP * row.importance, content
 
 
+def _stale_clause_penalty(meta: Optional[dict], cutoff: datetime) -> float:
+    """Demotion for a parent turn whose derived clause(s) closed by *cutoff*."""
+    marks = (meta or {}).get("_stale_clauses") or []
+    if not marks:
+        return 0.0
+    n = 0
+    for ts in marks:
+        try:
+            t = datetime.fromisoformat(str(ts))
+        except (TypeError, ValueError):
+            continue
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        if t <= cutoff:
+            n += 1
+    return STALE_CLAUSE_PENALTY * min(n, 2)
+
+
+def _collapse_derived(
+    scored: list[tuple[Any, float, Optional[str]]],
+) -> list[tuple[Any, float, Optional[str]]]:
+    """Drop a derived clause when its parent turn is already selected — the
+    clause is a substring of the parent, so it adds nothing to the result set.
+    The parent is never dropped in favor of a clause: a clause is a lossy
+    fragment of a multi-fact turn, and evicting the parent can evict the very
+    fact the query wanted. ``scored`` must be sorted by score descending.
+    No-op when interjection extraction never ran."""
+    kept: list[tuple[Any, float, Optional[str]]] = []
+    kept_ids: set[str] = set()
+    for entry in scored:
+        row = entry[0]
+        parent = (dict(getattr(row, "metadata_", None) or {})).get("_parent")
+        if parent and str(parent) in kept_ids:
+            continue
+        kept.append(entry)
+        row_id = str(getattr(row, "id", "") or "")
+        if row_id:
+            kept_ids.add(row_id)
+    return kept
+
+
 def _event_ts(row: Any) -> float:
     t = row.event_time
     if t.tzinfo is None:
@@ -473,8 +522,12 @@ async def hybrid_recall(
         ]
         sems = _smoothed_sems(candidates, [p[0] for p in parts])
         bonuses = _temporal_bonus(candidates, query_time_windows(query))
+        cutoff = as_of if as_of.tzinfo else as_of.replace(tzinfo=timezone.utc)
         scored: list[tuple[Memory, float, Optional[str]]] = [
-            (mem, W_SEM * sem + W_LEX * lex + rest + bonus, content)
+            (mem,
+             W_SEM * sem + W_LEX * lex + rest + bonus
+             - _stale_clause_penalty(mem.metadata_, cutoff),
+             content)
             for mem, sem, bonus, (_, lex, rest, content)
             in zip(candidates, sems, bonuses, parts)
         ]
@@ -512,13 +565,19 @@ async def hybrid_recall(
             for m in rows.scalars():
                 mem_by_id[m.id] = m
         scored = []
+        now = datetime.now(timezone.utc)
         for fact, sem, bonus, (_, lex, rest, content) in zip(facts, sems, bonuses, parts):
             mem = mem_by_id.get(fact.memory_id)
             if mem is not None:
-                scored.append((mem, W_SEM * sem + W_LEX * lex + rest + bonus, content))
+                scored.append((
+                    mem,
+                    W_SEM * sem + W_LEX * lex + rest + bonus
+                    - _stale_clause_penalty(mem.metadata_, now),
+                    content,
+                ))
 
     scored.sort(key=lambda x: x[1], reverse=True)
-    return _mmr_select(scored, k)
+    return _mmr_select(_collapse_derived(scored), k)
 
 
 def _mmr_select(

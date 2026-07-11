@@ -188,6 +188,145 @@ def _memory_to_out(mem: Memory, content: Optional[str]) -> MemoryOut:
     )
 
 
+async def _mark_parent_stale(
+    db: AsyncSession,
+    namespace: str,
+    agent_id: str,
+    closed_mem: Memory,
+    closure_time: datetime,
+) -> None:
+    """When a derived clause closes, its parent turn still contains the stale
+    text. Record the closure on the parent (metadata._stale_clauses, a list of
+    closure timestamps — never clause text, which may be subject-encrypted) so
+    ranking can demote it; the raw content is untouched."""
+    parent_ref = (dict(closed_mem.metadata_ or {})).get("_parent")
+    if not parent_ref:
+        return
+    try:
+        parent = await db.get(Memory, UUID(str(parent_ref)))
+    except (ValueError, TypeError):
+        return
+    if parent is None or parent.erased_at is not None:
+        return
+    meta = dict(parent.metadata_ or {})
+    marks = list(meta.get("_stale_clauses") or [])
+    marks.append(_utc(closure_time).isoformat())
+    meta["_stale_clauses"] = marks
+    parent.metadata_ = meta
+    from .models import LiveFact
+    await db.execute(
+        update(LiveFact).where(LiveFact.memory_id == parent.id).values(metadata_=meta)
+    )
+    await chain_log(
+        db, namespace=namespace, agent_id=agent_id,
+        op="derived_stale_mark", memory_id=parent.id,
+        content_hash=parent.content_hash,
+        payload={"closed_clause": str(closed_mem.id), "closure_time": _utc(closure_time).isoformat()},
+    )
+
+
+async def _ingest_derived_clause(
+    db: AsyncSession,
+    namespace: str,
+    req: MemoryAdd,
+    parent: Memory,
+    clause: str,
+    embedding: list[float],
+    subject_key: Optional[bytes],
+) -> None:
+    """Store one extracted interjection clause as a derived memory.
+
+    Same event_time/subject/barrier as the parent; structured keys are dropped
+    so a clause can never trip keyed supersession against its own parent. Runs
+    the full supersession funnel — this is where a cued revision clause closes
+    its predecessor clause. Caller holds the agent write lock.
+    """
+    from .adapters import get_adapter
+    sk = get_adapter().structured_keys
+    meta = {
+        k: v for k, v in (req.metadata or {}).items()
+        if k not in sk and k not in ("_auto_meta", "_stale_clauses")
+    }
+    meta["_derived"] = "interjection"
+    meta["_parent"] = str(parent.id)
+
+    import uuid as _uuid
+    new_id = _uuid.uuid4()
+    supersession = await run_supersession(
+        db=db, namespace=namespace, agent_id=req.agent_id,
+        new_content=clause, new_meta=meta, new_embedding=embedding,
+        new_event_time=req.event_time, subject_key=subject_key,
+        new_memory_id=new_id,
+    )
+
+    dmem = Memory(
+        id=new_id,
+        namespace=namespace,
+        agent_id=req.agent_id,
+        content_encrypted=encrypt_content(clause, subject_key) if subject_key else clause.encode(),
+        subject_id=req.subject_id,
+        embedding=embedding,
+        metadata_=meta,
+        event_time=req.event_time,
+        ingestion_time=datetime.now(timezone.utc),
+        valid_from=req.event_time,
+        valid_to=None,
+        importance=parent.importance,
+        source=req.source,
+        content_hash=_content_hash(clause),
+        barrier_group=parent.barrier_group,
+    )
+    db.add(dmem)
+    await db.flush()
+
+    for old_id in supersession.superseded_ids:
+        old = await db.get(Memory, old_id)
+        if old:
+            old.valid_to = req.event_time
+            old.superseded_by = dmem.id
+            old.supersession_confidence = supersession.confidence
+            await chain_log(
+                db, namespace=namespace, agent_id=req.agent_id,
+                op="supersede", memory_id=old.id,
+                content_hash=old.content_hash,
+                payload={
+                    "superseded_by": str(dmem.id),
+                    "confidence": supersession.confidence,
+                    "relation": supersession.relation,
+                    "derived": True,
+                },
+            )
+            await _mark_parent_stale(db, namespace, req.agent_id, old, req.event_time)
+
+    # Backdated arrival: a live later revision of this clause already exists.
+    arrived_closed = False
+    if supersession.superseded_by_id is not None:
+        newer = await db.get(Memory, supersession.superseded_by_id)
+        if newer is not None and _utc(newer.event_time) > _utc(req.event_time):
+            dmem.valid_to = newer.event_time
+            dmem.superseded_by = newer.id
+            dmem.supersession_confidence = supersession.confidence
+            arrived_closed = True
+
+    await remove_live_facts(db, supersession.superseded_ids)
+    if not arrived_closed:
+        await upsert_live_fact(db, dmem, compute_predicate_key(meta))
+
+    await chain_log(
+        db, namespace=namespace, agent_id=req.agent_id,
+        op="add", memory_id=dmem.id,
+        content_hash=dmem.content_hash,
+        payload={
+            "source": req.source,
+            "event_time": req.event_time.isoformat(),
+            "derived_from": str(parent.id),
+            "kind": "interjection",
+            "supersession_relation": supersession.relation,
+            "supersession_confidence": supersession.confidence,
+        },
+    )
+
+
 async def add_memory(
     db: AsyncSession,
     namespace: str,
@@ -229,6 +368,21 @@ async def add_memory(
                     span.set_attribute("auto_metadata_keys", ",".join(auto_prov["keys"]))
             except Exception:
                 pass  # fail-open: enrichment must never break ingestion
+
+        # Interjection extraction (see interjection.py): durable-fact clauses
+        # buried in a conversational turn become derived memories beside the
+        # raw turn. Extraction + embedding happen before the write lock; the
+        # derived rows are ingested inside it. Fail-open, like auto-metadata.
+        derived_clauses: list[tuple[str, list[float]]] = []
+        if settings.interjection_extraction_enabled and not (req.metadata or {}).get("_derived"):
+            try:
+                from .interjection import extract_interjections
+                clauses = extract_interjections(req.content)
+                if clauses:
+                    vectors = await get_embedding_provider().embed(clauses)
+                    derived_clauses = list(zip(clauses, vectors))
+            except Exception:
+                logger.warning("interjection extraction failed — storing raw turn only", exc_info=True)
 
         # Change 6: DEK resolved through cache
         subject_key: Optional[bytes] = None
@@ -303,6 +457,7 @@ async def add_memory(
                             "adjudication_stage": 3 if supersession.rationale else 2,
                         },
                     )
+                    await _mark_parent_stale(db, namespace, req.agent_id, old, req.event_time)
 
             # Out-of-order ingestion: a live fact with a LATER event_time already
             # covers this key/topic, so the incoming memory arrives historical —
@@ -371,6 +526,18 @@ async def add_memory(
                     "supersession_confidence": supersession.confidence,
                 },
             )
+
+            # Ingest extracted interjection clauses as derived memories. Runs
+            # inside the same lock/transaction as the parent; each clause goes
+            # through the full supersession funnel so a cued revision clause
+            # closes its predecessor clause. Fail-open per clause.
+            for clause_text, clause_vec in derived_clauses:
+                try:
+                    await _ingest_derived_clause(
+                        db, namespace, req, mem, clause_text, clause_vec, subject_key,
+                    )
+                except Exception:
+                    logger.warning("derived-clause ingest failed — raw turn unaffected", exc_info=True)
 
             # Fan out webhook events for the write outcome. dispatch_event is a
             # no-op when no endpoint subscribes, so this is safe on every write.

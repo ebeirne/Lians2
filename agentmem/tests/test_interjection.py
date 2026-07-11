@@ -1,0 +1,123 @@
+"""
+Interjection extraction — sub-turn durable facts (the agent_sim finding).
+
+Two layers under test:
+  1. The deterministic clause extractor (pure) — pulls buried durable facts
+     ("remind me I eat fish now" mid-task) out of long conversational turns,
+     and stays silent on single-clause turns, task chatter, and keyed facts.
+  2. The ranking helpers — parent/clause collapse (one fact can't fill two
+     result slots) and the time-aware stale-clause demotion.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from src.lians.interjection import extract_interjections
+from src.lians.ranking import _collapse_derived, _stale_clause_penalty, STALE_CLAUSE_PENALTY
+
+
+# ── Layer 1: pure deterministic extractor ────────────────────────────────────
+
+
+def test_buried_location_fact_extracted():
+    turn = ("User: Ooh that's good. Okay so now activities — I'm thinking we open "
+            "with something to get people talking, since I've got their whole team "
+            "flying into my studio in Portland and they won't all know each other.")
+    out = extract_interjections(turn)
+    assert len(out) == 1
+    assert "my studio in Portland" in out[0]
+    assert out[0].startswith("User: ")
+
+
+def test_aside_marker_trims_to_the_request():
+    turn = ("User: Um, discovery is probably like 4 days, UX design maybe 8? Oh and "
+            "I should tell you — the client wants to do a lunch meeting, remind me "
+            "I eat fish now, I'm not vegetarian anymore.")
+    out = extract_interjections(turn)
+    assert any(c.endswith("remind me I eat fish now, I'm not vegetarian anymore.") for c in out)
+
+
+def test_trailing_aside_falls_back_to_whole_fact_clause():
+    turn = ("User: Oh wait, actually can we do pricing at the same time because my "
+            "brain wants to know the numbers — my day rate is $900 by the way.")
+    out = extract_interjections(turn)
+    assert out == ["User: my day rate is $900 by the way."]
+
+
+def test_revision_clause_carries_its_cue():
+    turn = ("User: Oh, by the way, my day rate went up to $1100 now that Loomis "
+            "renewed, so I should factor that into how long I'm spending prepping this.")
+    out = extract_interjections(turn)
+    assert len(out) == 1
+    assert "$1100" in out[0] and "went up" in out[0]
+
+
+def test_short_fact_clause_falls_back_to_segment():
+    # "my day rate is $900" alone is under the length floor; the segment rescue
+    # must keep the fact (second agent_sim run's phrasing).
+    turn = "User: Yes, phases is perfect. Oh — my day rate is $900, so we can build off that for the estimates."
+    out = extract_interjections(turn)
+    assert len(out) == 1
+    assert "$900" in out[0]
+
+
+def test_negotiated_revision_extracted():
+    turn = ("User: Let me find it real quick... okay it's basically like intro, then a "
+            "design system overview, then a break, then prototyping demo, then wrap-up. "
+            "Oh and by the way I finally negotiated my day rate up to $1100 after the "
+            "Loomis renewal, so that felt good.")
+    out = extract_interjections(turn)
+    assert any("$1100" in c for c in out)
+
+
+def test_single_clause_turn_not_duplicated():
+    # The whole turn already IS the fact — extraction would just copy it.
+    assert extract_interjections("User: I moved to Boulder.") == []
+    assert extract_interjections("NVDA guidance raised to $40B") == []
+
+
+def test_task_chatter_ignored():
+    turn = ("User: Perfect, let's build in 2 rounds per phase and then it's like... "
+            "$900 a day after that for extra rounds, right? Oh god I also need to "
+            "reschedule my dentist thing but that's a later-me problem — anyway "
+            "yeah, put the revision clause in.")
+    assert extract_interjections(turn) == []
+
+
+# ── Layer 2: ranking helpers ─────────────────────────────────────────────────
+
+
+class _Row:
+    def __init__(self, id, meta=None):
+        self.id = id
+        self.metadata_ = meta or {}
+
+
+def test_collapse_drops_clause_only_when_parent_already_kept():
+    parent = _Row("p1")
+    clause = _Row("c1", {"_derived": "interjection", "_parent": "p1"})
+    other = _Row("x1")
+    # Parent first: the clause is a substring of it — redundant, dropped.
+    scored = [(parent, 0.9, "p"), (clause, 0.8, "c"), (other, 0.7, "o")]
+    assert [e[0].id for e in _collapse_derived(scored)] == ["p1", "x1"]
+    # Clause first: the parent may hold facts the clause lost — NEVER evicted.
+    scored = [(clause, 0.9, "c"), (parent, 0.8, "p"), (other, 0.7, "o")]
+    assert [e[0].id for e in _collapse_derived(scored)] == ["c1", "p1", "x1"]
+
+
+def test_collapse_noop_without_derived_rows():
+    scored = [(_Row("a"), 0.9, None), (_Row("b"), 0.8, None)]
+    assert _collapse_derived(scored) == scored
+
+
+def test_stale_penalty_is_time_aware():
+    closure = datetime(2026, 6, 9, tzinfo=timezone.utc)
+    meta = {"_stale_clauses": [closure.isoformat()]}
+    before = datetime(2026, 5, 25, tzinfo=timezone.utc)
+    after = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    assert _stale_clause_penalty(meta, before) == 0.0
+    assert _stale_clause_penalty(meta, after) == STALE_CLAUSE_PENALTY
+    assert _stale_clause_penalty({}, after) == 0.0
+    # capped at two closures
+    meta3 = {"_stale_clauses": [closure.isoformat()] * 3}
+    assert _stale_clause_penalty(meta3, after) == 2 * STALE_CLAUSE_PENALTY

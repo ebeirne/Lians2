@@ -121,6 +121,16 @@ class Settings(BaseSettings):
     auto_metadata_llm: bool = False
     auto_metadata_model: str = "claude-haiku-4-5-20251001"
 
+    # ── Interjection extraction (sub-turn durable facts) ──────────────────────
+    # Conversational turns bury durable facts as mid-clause asides ("remind me
+    # I eat fish now" dropped mid-task); stored whole, the turn's embedding
+    # dilutes the fact and revisions can never supersede it.  When enabled,
+    # add_memory extracts such clauses (rule-based, see interjection.py) and
+    # stores each as a derived memory (metadata._derived/._parent) beside the
+    # raw turn.  Off by default — evaluate against your recall benchmarks
+    # before enabling on an existing corpus.
+    interjection_extraction_enabled: bool = False
+
     # ── Memory admission control ──────────────────────────────────────────────
     # off     — no admission evaluation
     # monitor — evaluate + tag + audit, always admit (default; observe first)
