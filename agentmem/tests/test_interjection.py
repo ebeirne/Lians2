@@ -70,6 +70,24 @@ def test_negotiated_revision_extracted():
     assert any("$1100" in c for c in out)
 
 
+def test_reminder_to_myself_and_adverbed_verb():
+    # Third agent_sim run's phrasing: aside marker "reminder to myself" and the
+    # adverb between subject and verb ("I actually eat").
+    turn = ("User: Yeah let's do it. Oh wait—reminder to myself, I need to tell the "
+            "caterer I actually eat fish now, so I'm pescatarian, not full veggie. "
+            "Anyway, deliverables!")
+    out = extract_interjections(turn)
+    assert any("eat fish now" in c or "pescatarian" in c for c in out)
+
+
+def test_conjunction_buried_fact_splits_off():
+    turn = ("User: Ugh, hold on — remind me to reschedule the client lunch, they "
+            "picked a steakhouse and I'm pescatarian now, so I need to find "
+            "somewhere with fish.")
+    out = extract_interjections(turn)
+    assert any(c == "User: I'm pescatarian now" for c in out), out
+
+
 def test_single_clause_turn_not_duplicated():
     # The whole turn already IS the fact — extraction would just copy it.
     assert extract_interjections("User: I moved to Boulder.") == []

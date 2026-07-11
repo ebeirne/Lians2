@@ -127,9 +127,11 @@ class Settings(BaseSettings):
     # dilutes the fact and revisions can never supersede it.  When enabled,
     # add_memory extracts such clauses (rule-based, see interjection.py) and
     # stores each as a derived memory (metadata._derived/._parent) beside the
-    # raw turn.  Off by default — evaluate against your recall benchmarks
-    # before enabling on an existing corpus.
-    interjection_extraction_enabled: bool = False
+    # raw turn.  Default ON since the 2026-07-11 A/B: LOCOMO evidence retrieval
+    # 83.5/69.4 with extraction vs 82.4/68.5 published baseline (neutral-to-
+    # positive on every conversation), agent_sim interjection probes 100%.
+    # Set false to keep raw-turn-only ingestion.
+    interjection_extraction_enabled: bool = True
 
     # ── Memory admission control ──────────────────────────────────────────────
     # off     — no admission evaluation

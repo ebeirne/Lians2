@@ -102,6 +102,11 @@ def main() -> None:
     if args.limit:
         dataset = dataset[: args.limit]
     model = SentenceTransformer(MODEL)
+    # Cap sequence length: arctic-l-v2.0 accepts 8192 tokens, and one pasted-
+    # document-sized message at full length is a >1GB attention allocation
+    # (OOM'd this 16GB machine even at batch 8). 512 tokens is the standard
+    # retrieval cap; embeddings truncate, BM25 and stored content stay full.
+    model.max_seq_length = 512
 
     for qn, question in enumerate(dataset):
         qid = question["question_id"]
@@ -116,8 +121,10 @@ def main() -> None:
             z = np.load(cache)
             doc_embs, q_emb = z["doc_embs"], z["q_emb"]
         else:
+            # batch_size 8: at 32, one long-message haystack OOM'd the 16GB
+            # machine (1GB tensor alloc in XLM-R attention) — 2026-07-11.
             doc_embs = model.encode(contents, normalize_embeddings=True,
-                                    batch_size=32, show_progress_bar=False)
+                                    batch_size=8, show_progress_bar=False)
             q_emb = model.encode([QUERY_PREFIX + question["question"]],
                                  normalize_embeddings=True,
                                  show_progress_bar=False)[0]

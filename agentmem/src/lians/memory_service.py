@@ -252,11 +252,16 @@ async def _ingest_derived_clause(
 
     import uuid as _uuid
     new_id = _uuid.uuid4()
+    # The clause inherits the parent turn's revision-cue status: the cue words
+    # ("wait —", "actually", "now") usually stay in the surrounding chatter
+    # while the extracted clause is the revision payload itself.
+    from .supersession import _REVISION_CUE_RE
+    parent_cued = bool(_REVISION_CUE_RE.search(req.content or ""))
     supersession = await run_supersession(
         db=db, namespace=namespace, agent_id=req.agent_id,
         new_content=clause, new_meta=meta, new_embedding=embedding,
         new_event_time=req.event_time, subject_key=subject_key,
-        new_memory_id=new_id,
+        new_memory_id=new_id, cue_hint=parent_cued,
     )
 
     dmem = Memory(

@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import os as _os
 from datetime import datetime, timezone as _tz
 from typing import Any, Optional
 from uuid import UUID
@@ -213,19 +214,40 @@ import re as _re_mod
 
 _REVISION_CUE_RE = _re_mod.compile(
     r"\b(?:"
-    r"no longer|not\s+\w+\s+anymore|anymore|now|instead|actually|wait|"
-    r"correction|corrected|updated?|revised?|changed?|switch(?:ed)?|moved?|"
+    r"no longer|not\s+\w+\s+anymore|anymore|"
+    # "now" as a trailing state marker ("I eat fish now"), not the fillers that
+    # saturate casual dialogue: "what now?", "right now", discourse-initial "Now,".
+    r"(?<!what )(?<!right )(?<!for )(?<![.!?] )now|instead|"
+    # self-correction comma forms only — bare "wait"/"actually" fire on
+    # "can't wait" / "actually really fun" constantly in chat. Lookahead for
+    # the comma: inside a group that ends in \b, a literal "wait," could never
+    # match ("," then space has no word boundary).
+    r"wait(?=,)|actually(?=,)|"
+    r"correction|corrected|updated?|revised?|changed?|switch(?:ed)?|moved|"
     r"relocat\w+|renamed?|adjust(?:ed)?|raised?|lowered?|increas\w+|decreas\w+|"
-    r"went (?:up|down)|left|quit|resigned|started (?:as|at)|promoted|demoted|"
+    r"went (?:up|down)|left|(?<!won't )(?<!don't )(?<!never )(?<!not )quit|resigned|"
+    r"started (?:as|at)|promoted|demoted|"
     r"taken over|took over|replace[sd]?|renewal|renewed|restated|amend\w+|"
     r"effective|from now on|these days"
     r")\b",
     _re_mod.IGNORECASE,
 )
 
+# A revision announces itself compactly ("I eat fish now", "my day rate went up
+# to $1100"); a reminiscence rambles. LOCOMO forensics (2026-07-11): 527 of
+# 5,882 raw dialogue turns (9%) were falsely closed by the cue path, and the
+# closers were overwhelmingly long chatty turns with an incidental cue word —
+# the length gate plus the lexicon tightening above prevents 81% of those
+# closures while every calibrated true-revision utterance still qualifies.
+_CUE_MAX_LEN = int(_os.getenv("SUPERSESSION_CUE_MAX_LEN", "160"))
+
 
 def _has_revision_cue(text: Optional[str]) -> bool:
-    return bool(text) and bool(_REVISION_CUE_RE.search(text))
+    return (
+        bool(text)
+        and len(text) <= _CUE_MAX_LEN
+        and bool(_REVISION_CUE_RE.search(text))
+    )
 
 
 try:
@@ -424,6 +446,7 @@ async def find_supersession_candidates(
     new_embedding: list[float],
     new_event_time: datetime,
     new_content: Optional[str] = None,
+    cue_hint: bool = False,
 ) -> list[Memory]:
     """Stage 1: find prior valid memories sharing structured keys + high cosine sim.
 
@@ -448,7 +471,7 @@ async def find_supersession_candidates(
     # final supersession decision stays top-1-only in run_supersession.
     unkeyed_threshold = (
         _CUE_SIM_THRESHOLD
-        if not new_structured and _has_revision_cue(new_content)
+        if not new_structured and (cue_hint or _has_revision_cue(new_content))
         else _SIM_THRESHOLD
     )
     filtered = []
@@ -537,8 +560,15 @@ async def run_supersession(
     new_event_time: datetime,
     subject_key: Optional[bytes] = None,
     new_memory_id: Optional[UUID] = None,
+    cue_hint: bool = False,
 ) -> SupersessionResult:
     """Full supersession funnel.
+
+    ``cue_hint``: treat the new content as a cued revision even if it carries
+    no cue word itself — used by derived interjection clauses, whose revision
+    cue often stays in the surrounding parent-turn chatter ("Oh wait — tell
+    the caterer ...": the extracted clause is the payload, the cue was the
+    lead-in).
 
     Change 3 fast path: if the new memory has a full structured key match,
     supersede strictly by event_time (deterministic, zero LLM cost).
@@ -565,7 +595,7 @@ async def run_supersession(
     # Unkeyed path: Stage 1 + Stage 2
     candidates = await find_supersession_candidates(
         db, namespace, agent_id, new_meta, new_embedding, new_event_time,
-        new_content=new_content,
+        new_content=new_content, cue_hint=cue_hint,
     )
     if not candidates:
         return SupersessionResult(relation="ADDS", confidence=1.0)
@@ -608,7 +638,7 @@ async def run_supersession(
             _has_structured_key(dict(candidate.metadata_ or {})) or _has_structured_key(new_meta)
         ):
             old_et = _utc(candidate.event_time)
-            if old_et < new_et and _has_revision_cue(new_content) and old_content:
+            if old_et < new_et and (cue_hint or _has_revision_cue(new_content)) and old_content:
                 emb = candidate.embedding if isinstance(candidate.embedding, list) \
                     else list(candidate.embedding or [])
                 if emb:

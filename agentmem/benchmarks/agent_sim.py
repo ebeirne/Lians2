@@ -109,9 +109,18 @@ def run_session(llm, model: str, mem, agent_id: str, session: dict) -> list[dict
     return transcript
 
 
-def score(mem, agent_id: str, probes: list[dict], k: int = 5) -> list[dict]:
+def score(mem, agent_id: str, probes: list[dict], k: int = 5,
+          transcript_text: str = "") -> list[dict]:
     rows = []
     for q in probes:
+        # Sim-fidelity guard: the User-LLM sometimes never works a must_mention
+        # detail into the conversation. A probe whose answer was never uttered
+        # is unanswerable by ANY memory system — report it separately instead
+        # of scoring it against the engine.
+        if transcript_text and q["answer"].lower() not in transcript_text:
+            rows.append({"query": q["query"], "as_of": q.get("as_of"),
+                         "not_uttered": True, "ok": None})
+            continue
         kwargs: dict[str, Any] = {"k": q.get("k", k)}
         if q.get("as_of"):
             kwargs["as_of"] = _when(q["as_of"])
@@ -121,7 +130,8 @@ def score(mem, agent_id: str, probes: list[dict], k: int = 5) -> list[dict]:
         stale_ok = not (q.get("stale") and any(q["stale"].lower() in t for t in texts))
         rows.append({"query": q["query"], "as_of": q.get("as_of"),
                      "found": found, "stale_excluded": stale_ok,
-                     "ok": found and stale_ok})
+                     "ok": found and stale_ok,
+                     "top_k": [t[:140] for t in texts]})
     return rows
 
 
@@ -164,16 +174,27 @@ def main() -> None:
                     "transcript": run_session(llm, args.model, mem, agent_id, sess),
                 })
 
-            rows = score(mem, agent_id, persona["probes"], k=args.k)
-            ok = sum(r["ok"] for r in rows)
-            print(f"[{persona['id']}] probes: {ok}/{len(rows)}")
+            all_text = "\n".join(
+                t["text"].lower() for s in transcripts for t in s["transcript"]
+                if t["role"] == "user"
+            )
+            rows = score(mem, agent_id, persona["probes"], k=args.k,
+                         transcript_text=all_text)
+            scored = [r for r in rows if r["ok"] is not None]
+            ok = sum(r["ok"] for r in scored)
+            skipped = len(rows) - len(scored)
+            note = f" ({skipped} not uttered by sim, excluded)" if skipped else ""
+            print(f"[{persona['id']}] probes: {ok}/{len(scored)}{note}")
             for r in rows:
-                mark = "OK  " if r["ok"] else ("MISS" if not r["found"] else "STALE")
+                if r["ok"] is None:
+                    mark = "SKIP"
+                else:
+                    mark = "OK  " if r["ok"] else ("MISS" if not r["found"] else "STALE")
                 asof = f" (as_of {r['as_of']})" if r["as_of"] else ""
                 print(f"  {mark} {r['query']}{asof}")
             report["personas"].append({
-                "id": persona["id"], "correct": ok, "total": len(rows),
-                "probes": rows, "sessions": transcripts,
+                "id": persona["id"], "correct": ok, "total": len(scored),
+                "not_uttered": skipped, "probes": rows, "sessions": transcripts,
             })
 
     _RESULTS.mkdir(parents=True, exist_ok=True)

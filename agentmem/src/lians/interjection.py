@@ -39,15 +39,19 @@ _SEGMENT_SPLIT = re.compile(r"(?<=[.!?…])\s+|\s+[—–]\s*|\s*[—–]\s+|\s+
 # these; a fact stated across a bare comma ("I eat fish now, I'm not
 # vegetarian anymore") stays intact.
 _CLAUSE_SPLIT = re.compile(
-    r",\s+(?:so|since|because|but|although|though|anyway)\b\s*|\s+because\s+",
+    r",\s+(?:so|since|because|but|although|though|anyway)\b\s*|\s+because\s+"
+    # a first-person fact riding a conjunction ("...steakhouse and I'm
+    # pescatarian now") splits off; "and they/it/..." stays joined.
+    r"|,?\s+and\s+(?=I\b|I'm\b|my\b)",
     re.IGNORECASE,
 )
 
 # Aside markers: the clause is an explicit "store this" interjection — trim to
 # the marker so the stored fact starts at the request, not the task chatter.
 _ASIDE_CUES = re.compile(
-    r"\b(?:remind me|don'?t forget|for the record|remember that|"
-    r"I should (?:tell|mention|say)|by the way)\b",
+    r"\b(?:remind me|reminder (?:to|for) (?:myself|me)|note to self|"
+    r"don'?t forget|for the record|remember that|"
+    r"I should (?:tell|mention|say)|I need to tell|by the way)\b",
     re.IGNORECASE,
 )
 
@@ -58,8 +62,11 @@ _FACT_CUES = re.compile(
     r"|\bmy\s+\w+(?:\s+\w+)?\s+in\s+[A-Z][a-z]"
     r"|\bI(?:'m| am)\s+(?:allergic|vegetarian|vegan|pescatarian|gluten|lactose|"
     r"based|located)\b"
-    r"|\bI\s+(?:now\s+)?(?:eat|live|work|drive|prefer|use|go by)\b"
-    r"|\bI(?:'m| am)\s+(?:at|with)\s+[A-Z][\w']",
+    r"|\bI\s+(?:now\s+|just\s+|\w+ly\s+)?(?:eat|live|work|drive|prefer|use|go by)\b"
+    r"|\bI(?:'m| am)\s+(?:at|with)\s+[A-Z][\w']"
+    # habitual adverb + verb is a durable fact by construction
+    # ("I usually do a day rate, which is $900")
+    r"|\bI\s+(?:usually|typically|normally|always)\s+\w+",
 )
 
 
