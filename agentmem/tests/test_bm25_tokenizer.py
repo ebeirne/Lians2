@@ -17,7 +17,18 @@ from src.lians.ranking import _bm25_score, _bm25_tokens
 def test_punctuation_never_glues_onto_tokens():
     assert _bm25_tokens("Total revenue.") == ["total", "revenue"]
     assert _bm25_tokens("[LANGTOK_ar_1a2b3c]") == ["langtok_ar_1a2b3c"]
-    assert _bm25_tokens("guidance: $9B (raised)") == ["guidance", "9b", "raised"]
+    # "raised" light-stems to "rais" — crude, but query and content pass
+    # through the same stemmer, so conjugation variants meet at one form.
+    assert _bm25_tokens("guidance: $9B (raised)") == ["guidance", "9b", "rais"]
+
+
+def test_inflections_stem_to_a_common_form():
+    assert _bm25_tokens("attending") == _bm25_tokens("attended") == ["attend"]
+    assert _bm25_tokens("studies") == _bm25_tokens("studied") == ["study"]
+    assert _bm25_tokens("planning") == ["plan"]
+    # short and non-Latin tokens pass through unstemmed
+    assert _bm25_tokens("was") == ["was"]
+    assert _bm25_tokens("акции") == ["акции"]
 
 
 def test_unicode_words_tokenize_per_word():

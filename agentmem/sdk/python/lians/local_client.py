@@ -166,6 +166,11 @@ class LocalLiansClient:
     async def _init_db(self) -> None:
         from src.lians.models import Base  # lazy import; avoids circular refs
         from src.lians.kms import load_master_key
+        # In-process recall caches are keyed by (namespace, agent); a fresh
+        # client is a fresh database, so anything cached by a previous client
+        # in this process must not leak into it.
+        from src.lians.session_cache import clear_all
+        clear_all()
 
         # Drop Postgres-only indexes so SQLite doesn't choke
         pg_indexes = [

@@ -26,6 +26,9 @@ from datetime import datetime, timezone
 from typing import Optional
 
 _cache: dict[tuple[str, str], tuple[datetime, list]] = {}  # (ns, agent) -> (fetched_at, facts)
+# Derived scoring artifacts (embedding matrix, BM25 stats, decrypted contents)
+# built by ranking._scoring_pack — same lifecycle as the working set.
+_packs: dict[tuple[str, str], object] = {}
 _MAX_ENTRIES = 512
 _TTL_SECONDS = 300  # 5 min max staleness — write invalidation handles most cases
 
@@ -53,6 +56,30 @@ def set_working_set(namespace: str, agent_id: str, facts: list) -> None:
 def invalidate_working_set(namespace: str, agent_id: str) -> None:
     """Drop cached facts — called on any write or erasure for this agent."""
     _cache.pop((namespace, agent_id), None)
+    _packs.pop((namespace, agent_id), None)
+
+
+def get_scoring_pack(namespace: str, agent_id: str):
+    return _packs.get((namespace, agent_id))
+
+
+def set_scoring_pack(namespace: str, agent_id: str, pack) -> None:
+    if len(_packs) >= _MAX_ENTRIES:
+        _packs.pop(next(iter(_packs)), None)
+    _packs[(namespace, agent_id)] = pack
+
+
+def clear_all() -> None:
+    """Drop every cached working set and scoring pack.
+
+    Needed when a process hosts more than one storage engine (tests,
+    notebooks with several LocalLiansClients): the caches are keyed by
+    (namespace, agent), so a second client reusing an agent name would
+    otherwise be served rows that belong to the first client's database.
+    Server deployments have one engine per process and never call this.
+    """
+    _cache.clear()
+    _packs.clear()
 
 
 def working_set_size() -> int:

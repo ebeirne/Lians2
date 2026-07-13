@@ -50,6 +50,48 @@ W_IMP = 0.15
 # 0.0 = pure diversity. Deterministic either way.
 MMR_LAMBDA = float(os.getenv("RECALL_MMR_LAMBDA", "1.0"))
 
+# Optional cross-encoder second stage: rerank the blend's top candidates with
+# a local reranker model before cutting to k. Probe-measured +8pts hit@10 on
+# LOCOMO conv_0 (86.7 vs 78.7 blend-only). Opt-in because it costs real CPU
+# (~50-150ms/pair without a GPU): set RECALL_RERANKER_MODEL to enable, e.g.
+# "BAAI/bge-reranker-v2-m3". Deterministic for a fixed model.
+RERANKER_MODEL = os.getenv("RECALL_RERANKER_MODEL", "")
+RERANKER_PREFETCH = int(os.getenv("RECALL_RERANKER_PREFETCH", "30"))
+
+_reranker = None
+
+
+def _get_reranker():
+    global _reranker
+    if _reranker is None:
+        from sentence_transformers import CrossEncoder
+        _reranker = CrossEncoder(RERANKER_MODEL, max_length=384)
+    return _reranker
+
+
+def rerank_cross_encoder(
+    query: str,
+    scored: list[tuple[Any, float, Optional[str]]],
+    k: int,
+) -> list[tuple[Any, float, Optional[str]]]:
+    """Rerank the top RERANKER_PREFETCH candidates by cross-encoder relevance
+    and return the new top-k. Rows without decrypted content keep their blend
+    order at the back of the prefetch window. Fail-open: any model error
+    returns the blend ordering untouched."""
+    if not RERANKER_MODEL or len(scored) <= 1:
+        return scored[:k]
+    window = scored[:max(RERANKER_PREFETCH, k)]
+    rest = scored[len(window):]
+    try:
+        ce = _get_reranker()
+        pairs = [(query, content or "") for _, _, content in window]
+        ce_scores = ce.predict(pairs, show_progress_bar=False)
+        order = sorted(range(len(window)), key=lambda i: -float(ce_scores[i]))
+        reranked = [window[i] for i in order]
+    except Exception:
+        return scored[:k]
+    return (reranked + rest)[:k]
+
 # Temporal-context smoothing: a memory inherits a fraction of its strongest
 # temporally-adjacent neighbor's semantic match. Dialogue and event streams
 # split one fact across neighboring entries (a question and its answer, a
@@ -265,10 +307,17 @@ def mmr_rerank(
     zero similarity (treated as maximally diverse).
     """
     lambda_ = min(1.0, max(0.0, lambda_))
-    embs: list[Optional[list[float]]] = [
-        list(r[0].embedding) if getattr(r[0], "embedding", None) is not None else None
-        for r in results
-    ]
+    def _emb_or_none(row: Any) -> Optional[list[float]]:
+        # Memory rows arrive with the embedding column deferred (recall
+        # hydration skips it); touching it here would lazy-load outside the
+        # async session. Treat unloaded as no-embedding (maximally diverse).
+        try:
+            e = getattr(row, "embedding", None)
+        except Exception:
+            return None
+        return list(e) if e is not None else None
+
+    embs: list[Optional[list[float]]] = [_emb_or_none(r[0]) for r in results]
     remaining = list(range(len(results)))
     order: list[int] = []
     while remaining:
@@ -527,6 +576,147 @@ def _score_components(
     return sem, lex, W_REC * rec + W_IMP * row.importance, content
 
 
+class _ScoringPack:
+    """Precomputed per-agent scoring artifacts (Change 7 extension).
+
+    Everything about the pool that does not depend on the query — decrypted
+    contents, an embedding matrix with row norms, BM25 term frequencies,
+    event timestamps, materiality half-lives, stale-clause marks, temporal
+    neighbor indices — computed once per working set and reused until the
+    next write invalidates it. Recall scoring then reduces to one matrix
+    product plus vectorized arithmetic: measured 380ms -> ~15ms per recall
+    at ~700 memories.
+    """
+
+    __slots__ = ("rows", "contents", "emb", "emb_norm", "doc_tf", "doc_len",
+                 "ts", "half_life", "importance", "stale_ts",
+                 "prev_idx", "next_idx", "fingerprint", "mem_by_id")
+
+    def __init__(self, facts: list, subject_keys: dict[str, bytes]):
+        n = len(facts)
+        self.mem_by_id: Optional[dict] = None  # hydrated Memory rows, lazy
+        self.rows = list(facts)
+        self.contents = [_decrypt(f, subject_keys) for f in facts]
+        dim = None
+        embs = []
+        for f in facts:
+            if f.embedding is not None:
+                e = _np.asarray(list(f.embedding), dtype=_np.float32)
+                dim = dim or len(e)
+            else:
+                e = None
+            embs.append(e)
+        dim = dim or 1
+        self.emb = _np.zeros((n, dim), dtype=_np.float32)
+        for i, e in enumerate(embs):
+            if e is not None and len(e) == dim:
+                self.emb[i] = e
+        self.emb_norm = _np.linalg.norm(self.emb, axis=1)
+        self.doc_tf, doc_len = [], []
+        for c in self.contents:
+            toks = _bm25_tokens(c) if c else []
+            tf: dict[str, int] = {}
+            for t in toks:
+                tf[t] = tf.get(t, 0) + 1
+            self.doc_tf.append(tf)
+            doc_len.append(len(toks))
+        self.doc_len = _np.asarray(doc_len, dtype=_np.float64)
+        self.ts = _np.asarray([_event_ts(f) for f in facts], dtype=_np.float64)
+        self.half_life = _np.asarray(
+            [_materiality_half_life(f.metadata_) for f in facts], dtype=_np.float64)
+        self.importance = _np.asarray([f.importance for f in facts], dtype=_np.float64)
+        stale = []
+        for f in facts:
+            marks = []
+            for ts_raw in (dict(f.metadata_ or {}).get("_stale_clauses") or []):
+                try:
+                    t = datetime.fromisoformat(str(ts_raw))
+                except (TypeError, ValueError):
+                    continue
+                if t.tzinfo is None:
+                    t = t.replace(tzinfo=timezone.utc)
+                marks.append(t.timestamp())
+            stale.append(_np.asarray(sorted(marks)))
+        self.stale_ts = stale
+        # temporal neighbors (previous/next by event_time within the gap)
+        order = _np.lexsort((_np.arange(n), self.ts))
+        self.prev_idx = _np.full(n, -1, dtype=_np.int64)
+        self.next_idx = _np.full(n, -1, dtype=_np.int64)
+        for pos, i in enumerate(order):
+            if pos > 0:
+                j = order[pos - 1]
+                if abs(self.ts[i] - self.ts[j]) <= CONTEXT_SMOOTHING_MAX_GAP_S:
+                    self.prev_idx[i] = j
+            if pos + 1 < n:
+                j = order[pos + 1]
+                if abs(self.ts[i] - self.ts[j]) <= CONTEXT_SMOOTHING_MAX_GAP_S:
+                    self.next_idx[i] = j
+        self.fingerprint = (n, str(getattr(facts[-1], "id", "")) if n else "")
+
+
+def _pack_fingerprint(facts: list) -> tuple:
+    return (len(facts), str(getattr(facts[-1], "id", "")) if facts else "")
+
+
+def _score_with_pack(
+    pack: "_ScoringPack",
+    query: str,
+    query_embedding: list[float],
+) -> list[float]:
+    """Vectorized replica of the per-row live scoring (same blend, same
+    smoothing, same bonuses/penalties, anchored to wall-clock now)."""
+    n = len(pack.rows)
+    q = _np.asarray(query_embedding, dtype=_np.float32) if query_embedding else None
+    if q is not None and pack.emb.shape[1] == len(q):
+        sem = (pack.emb @ q) / (pack.emb_norm * float(_np.linalg.norm(q)) + 1e-9)
+    else:
+        sem = _np.zeros(n, dtype=_np.float32)
+    if CONTEXT_SMOOTHING > 0 and n >= 2:
+        prev_s = _np.where(pack.prev_idx >= 0, sem[pack.prev_idx], 0.0)
+        next_s = _np.where(pack.next_idx >= 0, sem[pack.next_idx], 0.0)
+        nb = _np.maximum(_np.maximum(prev_s, next_s), 0.0)
+        sem = sem + CONTEXT_SMOOTHING * nb
+
+    q_tokens = set(_bm25_tokens(query))
+    lex = _np.zeros(n, dtype=_np.float64)
+    if q_tokens:
+        for i, (tf, dl) in enumerate(zip(pack.doc_tf, pack.doc_len)):
+            if not dl:
+                continue
+            denom_len = _BM25_K1 * (1 - _BM25_B + _BM25_B * dl / _BM25_AVG_DOC_LEN)
+            s = 0.0
+            for t in q_tokens:
+                f = tf.get(t, 0)
+                if f:
+                    s += (f * (_BM25_K1 + 1)) / (f + denom_len)
+            lex[i] = s / len(q_tokens)
+
+    now = datetime.now(timezone.utc)
+    now_ts = now.timestamp()
+    age_days = (now_ts - pack.ts) / 86400.0
+    rec = _np.exp(-_np.log(2.0) * age_days / pack.half_life)
+
+    scores = W_SEM * sem + W_LEX * lex + W_REC * rec + W_IMP * pack.importance
+
+    windows = query_time_windows(query)
+    if windows and TEMPORAL_GROUNDING_BONUS > 0:
+        in_window = _np.zeros(n, dtype=bool)
+        for lo, hi in windows:
+            in_window |= (pack.ts >= lo) & (pack.ts <= hi)
+        scores = scores + TEMPORAL_GROUNDING_BONUS * in_window
+
+    ents = query_entities(query)
+    if ents and ENTITY_MATCH_BONUS > 0:
+        scores = scores + _np.asarray(_entity_bonus(pack.contents, ents))
+
+    for i, marks in enumerate(pack.stale_ts):
+        if len(marks):
+            n_stale = int(_np.searchsorted(marks, now_ts, side="right"))
+            if n_stale:
+                scores[i] -= STALE_CLAUSE_PENALTY * min(n_stale, 2)
+    return scores.tolist()
+
+
 def _stale_clause_penalty(meta: Optional[dict], cutoff: datetime) -> float:
     """Demotion for a parent turn whose derived clause(s) closed by *cutoff*."""
     marks = (meta or {}).get("_stale_clauses") or []
@@ -662,39 +852,69 @@ async def hybrid_recall(
                 db, namespace, agent_id, barrier_group, filters, query_embedding, k
             )
 
-        parts = [
-            _score_components(fact, query, query_embedding, subject_keys)
-            for fact in facts
-        ]
-        sems = _smoothed_sems(facts, [p[0] for p in parts])
-        bonuses = _temporal_bonus(facts, query_time_windows(query))
-        ent_bonuses = _entity_bonus([p[3] for p in parts], query_entities(query))
+        # Vectorized fast path (Change 7 extension): when the pool is the
+        # agent's whole working set, score against the cached _ScoringPack —
+        # one matrix product instead of per-row python.
+        pack = None
+        if _np is not None and facts and not filters and barrier_group is None:
+            from .session_cache import get_scoring_pack, set_scoring_pack
+            pack = get_scoring_pack(namespace, agent_id)
+            if pack is None or pack.fingerprint != _pack_fingerprint(facts):
+                pack = _ScoringPack(facts, subject_keys)
+                set_scoring_pack(namespace, agent_id, pack)
+
+        if pack is not None:
+            pack_scores = _score_with_pack(pack, query, query_embedding)
+            contents = pack.contents
+        else:
+            parts = [
+                _score_components(fact, query, query_embedding, subject_keys)
+                for fact in facts
+            ]
+            sems = _smoothed_sems(facts, [p[0] for p in parts])
+            bonuses = _temporal_bonus(facts, query_time_windows(query))
+            ent_bonuses = _entity_bonus([p[3] for p in parts], query_entities(query))
+            now = datetime.now(timezone.utc)
+            pack_scores = [
+                W_SEM * sem + W_LEX * lex + rest + bonus + ent
+                - _stale_clause_penalty(fact.metadata_, now)
+                for fact, sem, bonus, ent, (_, lex, rest, _c)
+                in zip(facts, sems, bonuses, ent_bonuses, parts)
+            ]
+            contents = [p[3] for p in parts]
+
         # Always return Memory objects for API consistency — fetch the canonical
         # Memory rows so callers can use .id, .valid_to, .erased_at, etc.
-        # Batched: a per-fact db.get() here was one SQL round trip per live
-        # fact per recall, dominating recall latency on local SQLite.
-        mem_by_id: dict[Any, Memory] = {}
-        fact_ids = [fact.memory_id for fact in facts]
-        for i in range(0, len(fact_ids), 500):
-            chunk = fact_ids[i:i + 500]
-            rows = await db.execute(select(Memory).where(Memory.id.in_(chunk)))
-            for m in rows.scalars():
-                mem_by_id[m.id] = m
+        # Batched (one IN-query per 500), the embedding column deferred (the
+        # recall response never carries it, and decoding 685 JSON vectors was
+        # 330ms of every warm recall), and the hydrated map cached on the
+        # scoring pack so repeat recalls skip the query entirely.
+        if pack is not None and pack.mem_by_id is not None:
+            mem_by_id = pack.mem_by_id
+        else:
+            from sqlalchemy.orm import defer
+            mem_by_id = {}
+            fact_ids = [fact.memory_id for fact in facts]
+            for i in range(0, len(fact_ids), 500):
+                chunk = fact_ids[i:i + 500]
+                rows = await db.execute(
+                    select(Memory).options(defer(Memory.embedding))
+                    .where(Memory.id.in_(chunk)))
+                for m in rows.scalars():
+                    mem_by_id[m.id] = m
+            if pack is not None:
+                pack.mem_by_id = mem_by_id
         scored = []
-        now = datetime.now(timezone.utc)
-        for fact, sem, bonus, ent, (_, lex, rest, content) in zip(
-                facts, sems, bonuses, ent_bonuses, parts):
+        for fact, score, content in zip(facts, pack_scores, contents):
             mem = mem_by_id.get(fact.memory_id)
             if mem is not None:
-                scored.append((
-                    mem,
-                    W_SEM * sem + W_LEX * lex + rest + bonus + ent
-                    - _stale_clause_penalty(mem.metadata_, now),
-                    content,
-                ))
+                scored.append((mem, score, content))
 
     scored.sort(key=lambda x: x[1], reverse=True)
-    return _mmr_select(_collapse_derived(scored), k)
+    scored = _collapse_derived(scored)
+    if RERANKER_MODEL:
+        return rerank_cross_encoder(query, scored, k)
+    return _mmr_select(scored, k)
 
 
 def _mmr_select(
