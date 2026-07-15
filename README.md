@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/Lians-ai/Lians">
-    <img src="docs/images/banner.png" width="800px" alt="Lians - Regulated AI Memory Infrastructure">
+    <img src="https://www.lians.ai/logo-blue.png" width="280" alt="Lians">
   </a>
 </p>
 
